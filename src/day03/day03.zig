@@ -13,12 +13,12 @@ fn openAndRead(allocator: Allocator, path: []const u8) ![]const u8 {
     return file_content;
 }
 
-fn dfa_mult(input: []const u8) u32 {
-    var total: u32 = 0;
+fn dfa_mult(input: []const u8) u64 {
+    var total: u64 = 0;
 
     var state: usize = 0;
     var num_len: usize = 0;
-    var operands: [2]u32 = .{ 0, 0 };
+    var operands: [2]u64 = .{ 0, 0 };
     for (input) |ch| {
         // print("ch: {c} : {d} lhs: {d} rhs: {d}\n", .{ ch, state, operands[0], operands[1] });
         switch (state) {
@@ -63,7 +63,7 @@ fn dfa_mult(input: []const u8) u32 {
                     state = 0;
                     num_len = 0;
                     total = total + (operands[0] * operands[1]);
-                    print("mul({d},{d})\n", .{ operands[0], operands[1] });
+                    // print("mul({d},{d})\n", .{ operands[0], operands[1] });
                     operands = .{ 0, 0 };
                 } else {
                     state = 0;
@@ -81,29 +81,55 @@ fn partOne(input: []const u8) !u64 {
     return dfa_mult(input);
 }
 
+fn partTwo(input: []const u8) !u64 {
+    var match_start: usize = 0;
+    var match_end: usize = 0;
+    var total: u64 = 0;
+    var it: usize = 0;
+    while (true) {
+        if (it == 0) {
+            match_end = std.mem.indexOfPos(u8, input, match_start, "don't()") orelse input.len - 1;
+            total += dfa_mult(input[match_start..match_end]);
+        }
+        match_start = std.mem.indexOfPos(u8, input, match_start, "do()") orelse break;
+        match_end = std.mem.indexOfPos(u8, input, match_start, "don't()") orelse input.len - 1;
+
+        // print("slice: {s}\n", .{input[match_start..match_end]});
+        // print("it: {d]\n", .{it});
+
+        total += dfa_mult(input[match_start..match_end]);
+        match_start = match_end;
+        it += 1;
+    }
+    return total;
+}
+
 pub fn main() !void {
     var general_purpose_allocator: std.heap.GeneralPurposeAllocator(.{}) = .init;
     const gpa = general_purpose_allocator.allocator();
     _ = gpa;
 
-    const example_input = try openAndRead(page_allocator, "./src/day03/example.txt");
-    defer page_allocator.free(example_input); // Free the allocated memory after use
+    const p1_example_input = try openAndRead(page_allocator, "./src/day03/p1_example.txt");
+    defer page_allocator.free(p1_example_input); // Free the allocated memory after use
 
     const p1_input = try openAndRead(page_allocator, "./src/day03/p1_input.txt");
     defer page_allocator.free(p1_input); // Free the allocated memory after use
 
-    const result_part_one_example = try partOne(example_input);
+    const result_part_one_example = try partOne(p1_example_input);
     print("Part one example result: {d}\n", .{result_part_one_example});
 
     const result_part_one = try partOne(p1_input);
     print("Part one result: {d}\n", .{result_part_one});
 
-    // const p2_input = try openAndRead(page_allocator, "./src/day03/p2_input.txt");
-    // defer page_allocator.free(p2_input); // Free the allocated memory after use
-    //
-    // const result_part_two = try partTwo(gpa, p2_input);
-    // print("Part two result: {d}\n", .{result_part_two});
-    //
-    // const result_example = try partTwo(gpa, example_input);
-    // print("Part two example result: {d}\n", .{result_example});
+    const p2_example_input = try openAndRead(page_allocator, "./src/day03/p2_example.txt");
+    defer page_allocator.free(p2_example_input); // Free the allocated memory after use
+
+    const p2_input = try openAndRead(page_allocator, "./src/day03/p2_input.txt");
+    defer page_allocator.free(p2_input); // Free the allocated memory after use
+
+    const result_part_two_example = try partTwo(p2_example_input);
+    print("Part two example result: {d}\n", .{result_part_two_example});
+
+    const result_part_two = try partTwo(p2_input);
+    print("Part two result: {d}\n", .{result_part_two});
 }
