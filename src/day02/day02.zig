@@ -55,6 +55,36 @@ fn partOne(allocator: Allocator, input: []const u8) !i32 {
     return total_safe;
 }
 
+fn isSafe(list: ArrayList(i32)) bool {
+    var order: i32 = undefined;
+
+    for (0..list.items.len - 1) |it| {
+        const current = list.items[it];
+        const next = list.items[it + 1];
+
+        if (it == 0)
+            order = if (current > next) 1 else -1;
+
+        const diff: i32 = @intCast(@abs(current - next));
+        if (diff < 1 or diff > 3) {
+            return false;
+        }
+
+        if ((order == 1 and current < next) or (order == -1 and current > next)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+fn printArray(array: ArrayList(i32)) void {
+    print("Array: ", .{});
+    for (array.items) |i| {
+        print("{d} ", .{i});
+    }
+    print("\n", .{});
+}
+
 fn partTwo(allocator: Allocator, input: []const u8) !i32 {
     const data = try parseFile(allocator, input);
     defer data.deinit();
@@ -62,43 +92,24 @@ fn partTwo(allocator: Allocator, input: []const u8) !i32 {
     var total_safe: i32 = 0;
 
     for (0..data.items.len) |it| {
-        var order: i32 = 0;
-        var tolerance: i32 = 0;
+        const line = data.items[it];
+        var safe = isSafe(line);
+        if (safe) {
+            total_safe += 1;
+        } else {
+            for (0..line.items.len) |i| {
+                var line_dup = try line.clone();
+                defer line_dup.deinit();
 
-        print("-------- line {} --------\n", .{it});
-        var inner_it: usize = 0;
-        while (inner_it < data.items[it].items.len) {
-            print("item: {}, tolerance: {}\n", .{ data.items[it].items[inner_it], tolerance });
-            if (tolerance > 1)
-                break;
-
-            if (inner_it == data.items[it].items.len - 1) {
-                total_safe += 1;
-                break;
-            }
-
-            const current = data.items[it].items[inner_it];
-            const next = data.items[it].items[inner_it + 1];
-
-            if (inner_it <= 1) {
-                order = if (current > next) 1 else -1;
-            }
-            inner_it += 1;
-
-            const diff: i32 = @intCast(@abs(current - next));
-            if (diff < 1 or diff > 3) {
-                _ = data.items[it].orderedRemove(inner_it - 1);
-                tolerance += 1;
-                inner_it -= 1;
-            }
-
-            if ((order == 1 and current < next) or (order == -1 and current > next)) {
-                _ = data.items[it].orderedRemove(inner_it - 1);
-                tolerance += 1;
-                inner_it -= 1;
+                _ = line_dup.orderedRemove(i);
+                // printArray(line_dup);
+                safe = isSafe(line_dup);
+                if (safe) {
+                    total_safe += 1;
+                    break;
+                }
             }
         }
-        print("Safe : {}\n", .{if (tolerance > 1) false else true});
     }
     return total_safe;
 }
@@ -123,5 +134,5 @@ pub fn main() !void {
     print("Part two result: {d}\n", .{result_part_two});
 
     const result_example = try partTwo(gpa, example_input);
-    print("Part two result: {d}\n", .{result_example});
+    print("Part two example result: {d}\n", .{result_example});
 }
