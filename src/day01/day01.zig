@@ -1,12 +1,9 @@
-const p1_real = @embedFile("p1_input.txt");
-const p1_ex = @embedFile("p1_example.txt");
-
 const std = @import("std");
 const print = std.debug.print;
 const mem = std.mem;
 const page_allocator = std.heap.page_allocator;
 
-pub fn openAndRead(allocator: std.mem.Allocator, path: []const u8) ![]const u8 {
+fn openAndRead(allocator: std.mem.Allocator, path: []const u8) ![]const u8 {
     var file = try std.fs.cwd().openFile(path, .{});
     defer file.close();
 

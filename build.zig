@@ -13,11 +13,23 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    const day02 = b.createModule(.{
+        .root_source_file = b.path("src/day02/day02.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
     const day01_exe = b.addExecutable(.{
         .name = "day01",
         .root_module = day01,
     });
 
+    const day02_exe = b.addExecutable(.{
+        .name = "day02",
+        .root_module = day02,
+    });
+
     b.installArtifact(day01_exe);
+    b.installArtifact(day02_exe);
 }
 // runner.
