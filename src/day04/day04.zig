@@ -53,6 +53,8 @@ fn dfa(direction: [2]i32, lines: ArrayList([]const u8), context: *Ctx) bool {
 
 fn partOne(allocator: Allocator, input: []const u8) !usize {
     const lines = try splitLine(allocator, input);
+    defer lines.deinit();
+
     const line_height = lines.items.len;
     const line_width = lines.items[0].len;
 
@@ -104,6 +106,8 @@ fn diag_check(diag: [2][2]i32, lines: ArrayList([]const u8), context: *Ctx) bool
 
 fn partTwo(allocator: Allocator, input: []const u8) !usize {
     const lines = try splitLine(allocator, input);
+    defer lines.deinit();
+
     const line_height = lines.items.len;
     const line_width = lines.items[0].len;
 
