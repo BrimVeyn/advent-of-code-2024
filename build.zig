@@ -37,6 +37,12 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    const day06 = b.createModule(.{
+        .root_source_file = b.path("src/day06/day06.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
     const day01_exe = b.addExecutable(.{
         .name = "day01",
         .root_module = day01,
@@ -62,10 +68,16 @@ pub fn build(b: *std.Build) void {
         .root_module = day05,
     });
 
+    const day06_exe = b.addExecutable(.{
+        .name = "day06",
+        .root_module = day06,
+    });
+
     b.installArtifact(day01_exe);
     b.installArtifact(day02_exe);
     b.installArtifact(day03_exe);
     b.installArtifact(day04_exe);
     b.installArtifact(day05_exe);
+    b.installArtifact(day06_exe);
 }
 // runner.
