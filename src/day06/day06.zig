@@ -14,197 +14,178 @@ fn openAndRead(allocator: Allocator, path: []const u8) ![]u8 {
     return file_content;
 }
 
-const Direction = [4][2]i32{
-    [_]i32{ -1, 0 },
-    [_]i32{ 0, 1 },
-    [_]i32{ 1, 0 },
-    [_]i32{ 0, -1 },
+const Coord = struct {
+    x: i32,
+    y: i32,
 };
 
-const Ctx = struct {
-    i: i32,
-    j: i32,
-    height: usize,
+const Direction = enum {
+    NORTH,
+    EAST,
+    SOUTH,
+    WEST,
+};
+
+fn rotate(direction: Direction) Direction {
+    return switch (direction) {
+        .NORTH => .WEST,
+        .WEST => .SOUTH,
+        .SOUTH => .EAST,
+        .EAST => .NORTH,
+    };
+}
+
+fn add(coord: Coord, direction: Direction) Coord {
+    return switch (direction) {
+        .NORTH => .{ .y = coord.y - 1, .x = coord.x },
+        .WEST => .{ .y = coord.y, .x = coord.x + 1 },
+        .SOUTH => .{ .y = coord.y + 1, .x = coord.x },
+        .EAST => .{ .y = coord.y, .x = coord.x - 1 },
+    };
+}
+
+const Map = struct {
     width: usize,
-    total: usize,
-    current_dir: usize,
+    height: usize,
+    data: ArrayList([]u8),
+    guard_pos: Coord,
 
-    pub fn check_bounds(Self: *Ctx) bool {
-        return (Self.i < Self.height and Self.j < Self.width and Self.i >= 0 and Self.j >= 0);
-    }
-
-    pub fn next_pos(Self: *Ctx) void {
-        Self.i += Direction[Self.current_dir][0];
-        Self.j += Direction[Self.current_dir][1];
-    }
-
-    pub fn prev_pos(Self: *Ctx) void {
-        Self.i -= Direction[Self.current_dir][0];
-        Self.j -= Direction[Self.current_dir][1];
-    }
-
-    pub fn rotate_90(Self: *Ctx) void {
-        Self.current_dir += 1;
-        Self.current_dir %= 4;
-    }
-
-    pub fn next_char(Self: *Ctx, data: ArrayList([]u8)) u8 {
-        Self.next_pos();
-        if (!Self.check_bounds()) {
-            return 0;
-        }
-        return data.items[@as(usize, @intCast(Self.i))][@as(usize, @intCast(Self.j))];
-    }
-
-    pub fn isLoopable(Self: *Ctx, segments: ArrayList(ArrayList(struct { i32, i32 }))) bool {
-        if (segments.items.len < 3) return false;
-
-        var i = segments.items.len - 3;
-        while (i < segments.items.len) : (i -%= 4) {
-            const segment = segments.items[i];
-
-            if (Self.current_dir == 1 or Self.current_dir == 3) {
-                // print("AT [{},{}] --> [{},{}]\n", .{ Self.i, Self.j, segment.items[0][0], segment.items[0][1] });
-                if (segment.items[0][1] == Self.j)
-                    return true;
+    pub fn init(allocator: Allocator, input: []const u8) !Map {
+        var data = ArrayList([]u8).init(allocator);
+        var lines = std.mem.tokenizeScalar(u8, input, '\n');
+        var height: usize = 0;
+        var guard_pos: Coord = undefined;
+        while (lines.next()) |line| : (height += 1) {
+            if (std.mem.indexOf(u8, line, "^")) |idx| {
+                guard_pos = .{ .y = @intCast(height), .x = @intCast(idx) };
             }
-
-            if (Self.current_dir == 0 or Self.current_dir == 2) {
-                // print("AT [{},{}] --> [{},{}]\n", .{ Self.i, Self.j, segment.items[0][0], segment.items[0][1] });
-                if (segment.items[0][0] == Self.i)
-                    return true;
-            }
+            try data.append(try allocator.dupe(u8, line));
         }
-        return false;
+        return .{
+            .width = data.items[0].len,
+            .height = height,
+            .data = data,
+            .guard_pos = guard_pos,
+        };
+    }
+
+    pub fn isInBounds(Self: Map, coord: Coord) bool {
+        return (coord.y >= 0 and coord.y < Self.height and coord.x >= 0 and coord.x < Self.width);
+    }
+
+    pub fn getTile(Self: Map, coord: Coord) ?u8 {
+        if (Self.isInBounds(coord)) {
+            return Self.data.items[@intCast(coord.y)][@intCast(coord.x)];
+        } else return null;
+    }
+
+    pub fn replaceTile(Self: Map, coord: Coord, char: u8) !void {
+        if (Self.isInBounds(coord)) {
+            Self.data.items[@intCast(coord.y)][@intCast(coord.x)] = char;
+        } else {
+            return error.OutOfBounds;
+        }
+    }
+
+    pub fn deinit(Self: Map, allocator: Allocator) void {
+        for (Self.data.items) |line| {
+            allocator.free(line);
+        }
+        Self.data.deinit();
     }
 };
 
-fn dfs(data: ArrayList([]u8), context: *Ctx) void {
-    // var ch: u8 = 'X';
+const Guard = struct {
+    pos: Coord,
+    direction: Direction,
+
+    pub fn clone(Self: Guard) Guard {
+        return .{
+            .pos = Self.pos,
+            .direction = Self.direction,
+        };
+    }
+
+    pub fn move(Self: *Guard) void {
+        Self.pos = add(Self.pos, Self.direction);
+    }
+
+    pub fn turn(Self: *Guard, map: Map) void {
+        for (0..4) |_| {
+            const next = add(Self.pos, Self.direction);
+            const tile = map.getTile(next);
+            if (tile != null and tile.? == '#') {
+                Self.direction = rotate(Self.direction);
+            } else {
+                return;
+            }
+        }
+        unreachable;
+    }
+};
+
+pub fn partTwo(allocator: Allocator, input: []const u8) !usize {
+    const map = try Map.init(allocator, input);
+    defer map.deinit(allocator);
+
+    var guard = Guard{ .pos = map.guard_pos, .direction = .NORTH };
+
+    var visited = std.AutoHashMapUnmanaged(Coord, Direction){};
+    defer visited.deinit(allocator);
+
+    var obstacles = std.AutoArrayHashMapUnmanaged(Coord, bool){};
+    defer obstacles.deinit(allocator);
+
     while (true) {
-        const next_char = context.next_char(data);
-        if (next_char == 0) {
-            return;
-        } else if (next_char == '.') {
-            data.items[@as(usize, @intCast(context.i))][@as(usize, @intCast(context.j))] = 'X';
-            context.total += 1;
-        } else if (next_char == '#') {
-            context.prev_pos();
-            data.items[@as(usize, @intCast(context.i))][@as(usize, @intCast(context.j))] = '+';
-            context.rotate_90();
+        if (map.isInBounds(guard.pos)) {
+            try visited.put(allocator, guard.pos, guard.direction);
+        } else {
+            break;
         }
-        // print("--------{} {} {}----------\n", .{ context.i, context.j, context.current_dir });
-        // for (data.items) |line| {
-        //     print("{s}\n", .{line});
-        // }
-    }
-}
 
-fn getStartPos(input: ArrayList([]u8)) struct { usize, usize } {
-    for (input.items, 0..) |line, i| {
-        if (std.mem.indexOf(u8, line, "^")) |pos| {
-            return .{ i, pos };
+        guard.turn(map);
+        defer guard.move();
+
+        const front = add(guard.pos, guard.direction);
+        if (visited.count() < 2 or obstacles.get(front) != null) {
+            continue;
         }
-    }
-    return .{ 0, 0 };
-}
 
-fn getSegments(allocator: Allocator, data: ArrayList([]u8), context: *Ctx) !ArrayList(ArrayList(struct { i32, i32 })) {
-    // var ch: u8 = 'X';
+        var ghost = guard.clone();
+        var ghost_visited = try visited.clone(allocator);
+        defer ghost_visited.deinit(allocator);
 
-    var segments = ArrayList(ArrayList(struct { i32, i32 })).init(allocator);
-    var segment = ArrayList(struct { i32, i32 }).init(allocator);
-    try segment.append(.{ context.i, context.j });
-    while (true) {
-        const next_char = context.next_char(data);
-        if (next_char == 0) {
-            try segment.append(.{ context.i, context.j });
-            try segments.append(segment);
-            return segments;
-        } else if (next_char == '.' or next_char == 'X') {
-            try segment.append(.{ context.i, context.j });
-            data.items[@intCast(context.i)][@intCast(context.j)] = 'X';
-            const loopable = context.isLoopable(segments);
-            // if (loopable) {
-            //     print("Y: [{}, {}]\n", .{ context.i, context.j });
-            // }
-            context.total += if (loopable) 1 else 0;
-        } else if (next_char == '#') {
-            context.prev_pos();
-            data.items[@intCast(context.i)][@intCast(context.j)] = '+';
-            context.rotate_90();
-            try segments.append(segment);
-            segment = ArrayList(struct { i32, i32 }).init(allocator);
-            try segment.append(.{ context.i, context.j });
-        }
-    }
-    return segments;
-}
+        map.replaceTile(front, '#') catch continue;
 
-fn partOne(allocator: Allocator, input: []u8) !usize {
-    var data = ArrayList([]u8).init(allocator);
-    defer data.deinit();
+        const looping = while (true) {
+            ghost.turn(map);
+            ghost.move();
 
-    var lines = std.mem.tokenizeScalar(u8, input, '\n');
-    var height: usize = 0;
-    while (lines.next()) |line| : (height += 1) {
-        const mut_line = try allocator.dupe(u8, line);
-        try data.append(mut_line);
+            if (ghost_visited.get(ghost.pos)) |entry| {
+                if (entry == ghost.direction)
+                    break true;
+            }
+
+            if (map.isInBounds(ghost.pos)) {
+                try ghost_visited.put(allocator, ghost.pos, ghost.direction);
+            } else {
+                break false;
+            }
+        };
+
+        try obstacles.put(allocator, front, looping);
+
+        try map.replaceTile(front, '.');
     }
 
-    const pos = getStartPos(data);
-    // data.items[pos[0]][pos[1]] = 'X';
-    // print("pos: {} {}\n", .{ pos[0], pos[1] });
-    var context = Ctx{
-        .current_dir = 0,
-        .i = @as(i32, @intCast(pos[0])),
-        .j = @as(i32, @intCast(pos[1])),
-        .height = height,
-        .width = data.items[0].len,
-        .total = 0,
-    };
-    dfs(data, &context);
-    for (data.items) |line| allocator.free(line);
-    return context.total + 1; //starting pos
-}
+    // var it = visited.iterator();
+    // while (it.next()) |entry| print("[{},{}]\n", .{ entry.key_ptr.y, entry.key_ptr.x });
 
-fn partTwo(allocator: Allocator, input: []u8) !usize {
-    var data = ArrayList([]u8).init(allocator);
-    defer data.deinit();
-
-    var lines = std.mem.tokenizeScalar(u8, input, '\n');
-    var height: usize = 0;
-    while (lines.next()) |line| : (height += 1) {
-        const mut_line = try allocator.dupe(u8, line);
-        try data.append(mut_line);
+    var total: usize = 0;
+    for (obstacles.values()) |value| {
+        total += if (value) 1 else 0;
     }
-
-    const pos = getStartPos(data);
-    data.items[pos[0]][pos[1]] = 'X';
-    // print("pos: {} {}\n", .{ pos[0], pos[1] });
-    var context = Ctx{
-        .current_dir = 0,
-        .i = @intCast(pos[0]),
-        .j = @intCast(pos[1]),
-        .height = height,
-        .width = data.items[0].len,
-        .total = 0,
-    };
-    const segments = try getSegments(allocator, data, &context);
-    defer segments.deinit();
-    // for (data.items) |line| {
-    //     print("{s}\n", .{line});
-    // }
-    // for (segments.items) |seg| {
-    //     print("seg: ", .{});
-    //     for (seg.items) |position| {
-    //         print("[{}, {}],", .{ position[0], position[1] });
-    //     }
-    //     print("\n", .{});
-    // }
-    for (segments.items) |seg| seg.deinit();
-    for (data.items) |line| allocator.free(line);
-    return context.total;
+    return total;
 }
 
 pub fn main() !void {
@@ -220,8 +201,8 @@ pub fn main() !void {
     // const result_part_one_example = try partOne(gpa, p1_example_input);
     // print("Part one example result: {d}\n", .{result_part_one_example});
 
-    const result_part_one = try partOne(gpa, p1_input);
-    print("Part one result: {d}\n", .{result_part_one});
+    // const result_part_one = try partOne(gpa, p1_input);
+    // print("Part one result: {d}\n", .{result_part_one});
 
     const p2_input = try openAndRead(page_allocator, "./src/day06/p2_input.txt");
     defer page_allocator.free(p2_input); // Free the allocated memory after use
