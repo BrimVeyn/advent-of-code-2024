@@ -14,6 +14,15 @@ fn openAndRead(allocator: Allocator, path: []const u8) ![]u8 {
     return file_content;
 }
 
+const Coord = struct {
+    y: i32,
+    x: i32,
+
+    pub fn equals(self: Coord, other: Coord) bool {
+        return (self.x == other.x and self.y == other.y);
+    }
+};
+
 const Map = struct {
     height: usize,
     width: usize,
@@ -45,70 +54,125 @@ const Map = struct {
     }
 };
 
-const Coord = struct {
-    y: i32,
-    x: i32,
-};
+const AntenaMap = struct {
+    const Self = @This();
 
-const DiagMap = struct {
-    primDiag: ArrayList(ArrayList(u8)),
-    antiDiag: ArrayList(ArrayList(u8)),
+    raw_data: AutoHashMap(u8, ArrayList(Coord)),
+    pairs: ArrayList([2]Coord),
 
-    const Steps = [2][2]i32{
-        [_]i32{ -1, -1 },
-        [_]i32{ 1, 1 },
-    };
-
-    pub fn init(allocator: Allocator, input: []u8) !DiagMap {
-        var map = try Map.init(allocator, input);
-        defer map.deinit(allocator);
-        var primary = ArrayList(ArrayList(u8)).init(allocator);
-
-        var floor = Coord{ .y = @intCast(map.data.items.len), .x = 0 };
-        while (true) {
-            if (!map.isInBounds(floor))
-                break;
-            defer floor.x += 1;
-
-            var diagonal = ArrayList(u8).init(allocator);
-
-            var it = Coord{ .x = floor.x, .y = floor.y };
-            while (true) {
-                defer {
-                    it.y -= 1;
-                    it.x -= 1;
-                }
-                if (!map.isInBounds(floor))
-                    break;
-                try diagonal.append(map.data.items[@intCast(floor.y)][@intCast(floor.x)]);
+    fn getRawData(allocator: Allocator, map: Map) !AutoHashMap(u8, ArrayList(Coord)) {
+        var data = AutoHashMap(u8, ArrayList(Coord)).init(allocator);
+        for (map.data.items, 0..) |line, y| {
+            for (line, 0..) |ch, x| {
+                if (ch == '.')
+                    continue;
+                const coord: Coord = .{ .y = @intCast(y), .x = @intCast(x) };
+                const entry = try data.getOrPutValue(ch, ArrayList(Coord).init(allocator));
+                try entry.value_ptr.append(coord);
             }
-            try primary.append(diagonal);
         }
+        return data;
+    }
 
+    fn makePairs(allocator: Allocator, raw_data: AutoHashMap(u8, ArrayList(Coord))) !ArrayList([2]Coord) {
+        var pairs = ArrayList([2]Coord).init(allocator);
+        var it = raw_data.iterator();
+        while (it.next()) |entry| {
+            for (entry.value_ptr.items) |lhs| {
+                for (entry.value_ptr.items) |rhs| {
+                    if (!lhs.equals(rhs)) {
+                        try pairs.append([2]Coord{ lhs, rhs });
+                    }
+                }
+            }
+        }
+        return pairs;
+    }
+
+    pub fn init(allocator: Allocator, map: Map) !AntenaMap {
+        const raw_data = try Self.getRawData(allocator, map);
+        const pairs = try makePairs(allocator, raw_data);
         return .{
-            .primDiag = primary,
-            .antiDiag = primary,
+            .raw_data = raw_data,
+            .pairs = pairs,
         };
     }
 
-    pub fn deinit(Self: DiagMap) void {
-        for (Self.antiDiag.items) |diag| {
-            diag.deinit();
+    pub fn deinit(self: *AntenaMap) void {
+        var it = self.raw_data.iterator();
+        while (it.next()) |value| {
+            value.value_ptr.deinit();
         }
-        Self.antiDiag.deinit();
-        for (Self.primDiag.items) |diag| {
-            diag.deinit();
-        }
-        Self.primDiag.deinit();
+        self.raw_data.deinit();
+        self.pairs.deinit();
     }
 };
 
 fn partOne(allocator: Allocator, input: []u8) !usize {
-    var diagMap = try DiagMap.init(allocator, input);
-    defer diagMap.deinit();
-    return 0;
+    var map = try Map.init(allocator, input);
+    defer map.deinit(allocator);
+
+    var antenas = try AntenaMap.init(allocator, map);
+    defer antenas.deinit();
+
+    // var it = antenas.raw_data.iterator();
+    // while (it.next()) |entry| {
+    //     print("[{c}]: {any}\n", .{ entry.key_ptr.*, entry.value_ptr.items });
+    // }
+
+    var antinodes = AutoHashMap(Coord, bool).init(allocator);
+    defer antinodes.deinit();
+
+    for (antenas.pairs.items) |pair| {
+        const dx = pair[1].x - pair[0].x;
+        const dy = pair[1].y - pair[0].y;
+        // print("[{},{}] <-> [{},{}]\n", .{ pair[0].y, pair[0].x, pair[1].y, pair[1].x });
+        const antinode_coord: Coord = .{ .y = pair[0].y - dy, .x = pair[0].x - dx };
+        if (map.isInBounds(antinode_coord)) {
+            // print("dx: {}, dy: {} | [{},{}]\n", .{ dx, dy, antinode_coord.y, antinode_coord.x });
+            try antinodes.put(antinode_coord, true);
+        }
+    }
+
+    return antinodes.count();
 }
 
+fn partTwo(allocator: Allocator, input: []u8) !usize {
+    var map = try Map.init(allocator, input);
+    defer map.deinit(allocator);
+
+    var antenas = try AntenaMap.init(allocator, map);
+    defer antenas.deinit();
+
+    var antinodes = AutoHashMap(Coord, bool).init(allocator);
+    defer antinodes.deinit();
+
+    for (antenas.pairs.items) |pair| {
+        const dx = pair[1].x - pair[0].x;
+        const dy = pair[1].y - pair[0].y;
+        // print("[{},{}] <-> [{},{}]\n", .{ pair[0].y, pair[0].x, pair[1].y, pair[1].x });
+        var antinode_coord: Coord = .{ .y = pair[0].y - dy, .x = pair[0].x - dx };
+        while (map.isInBounds(antinode_coord)) {
+            defer {
+                antinode_coord.y -= dy;
+                antinode_coord.x -= dx;
+            }
+            // print("dx: {}, dy: {} | [{},{}]\n", .{ dx, dy, antinode_coord.y, antinode_coord.x });
+            try antinodes.put(antinode_coord, true);
+        }
+    }
+
+    var it = antenas.raw_data.iterator();
+    var antena_count: usize = 0;
+    while (it.next()) |entry| {
+        for (entry.value_ptr.items) |antena| {
+            if (antinodes.get(antena) == null)
+                antena_count += 1;
+        }
+    }
+
+    return antinodes.count() + antena_count;
+}
 pub fn main() !void {
     var general_purpose_allocator: std.heap.GeneralPurposeAllocator(.{}) = .init;
     const gpa = general_purpose_allocator.allocator();
@@ -116,23 +180,23 @@ pub fn main() !void {
     const p1_example_input = try openAndRead(page_allocator, "./src/day08/p1_example.txt");
     defer page_allocator.free(p1_example_input); // Free the allocated memory after use
 
-    // const p1_input = try openAndRead(page_allocator, "./src/day07/p1_input.txt");
-    // defer page_allocator.free(p1_input); // Free the allocated memory after use
-    //
+    const p1_input = try openAndRead(page_allocator, "./src/day08/p1_input.txt");
+    defer page_allocator.free(p1_input); // Free the allocated memory after use
+
     const result_part_one_example = try partOne(gpa, p1_example_input);
     print("Part one example result: {d}\n", .{result_part_one_example});
-    //
-    // const result_part_one = try partOne(gpa, p1_input);
-    // print("Part one result: {d}\n", .{result_part_one});
-    //
-    // const p2_input = try openAndRead(page_allocator, "./src/day07/p2_input.txt");
-    // defer page_allocator.free(p2_input); // Free the allocated memory after use
-    //
-    // const result_part_two_example = try partTwo(gpa, p1_example_input);
-    // print("Part two example result: {d}\n", .{result_part_two_example});
-    //
-    // const result_part_two = try partTwo(gpa, p2_input);
-    // print("Part two result: {d}\n", .{result_part_two});
+
+    const result_part_one = try partOne(gpa, p1_input);
+    print("Part one result: {d}\n", .{result_part_one});
+
+    const p2_input = try openAndRead(page_allocator, "./src/day08/p2_input.txt");
+    defer page_allocator.free(p2_input); // Free the allocated memory after use
+
+    const result_part_two_example = try partTwo(gpa, p1_example_input);
+    print("Part two example result: {d}\n", .{result_part_two_example});
+
+    const result_part_two = try partTwo(gpa, p2_input);
+    print("Part two result: {d}\n", .{result_part_two});
 
     const leaks = general_purpose_allocator.deinit();
     _ = leaks;
