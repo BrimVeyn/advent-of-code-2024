@@ -19,6 +19,7 @@ pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+    const check_step = b.step("check", "Checks");
     for (Days) |day| {
         var buffer: [128]u8 = .{0} ** 128;
         const root_file = try std.fmt.bufPrint(&buffer, "src/{s}/{s}.zig", .{ day, day });
@@ -32,6 +33,11 @@ pub fn build(b: *std.Build) !void {
             .root_module = module,
         });
         b.installArtifact(exe);
+        const exec_check = b.addExecutable(.{
+            .name = day,
+            .root_module = module,
+        });
+        check_step.dependOn(&exec_check.step);
     }
 }
 // runner.

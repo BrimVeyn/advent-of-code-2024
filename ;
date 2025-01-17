@@ -86,8 +86,6 @@ const DiskMapType = union(enum) {
 const FileSystem = struct {
     diskMap: ArrayList(DiskMapType),
     movedMap: AutoHashMap(usize, bool),
-    holeIt: usize,
-    fileIt: usize,
 
     pub fn init(allocator: Allocator, input: []const u8) !FileSystem {
         var diskMap = ArrayList(DiskMapType).init(allocator);
@@ -97,7 +95,7 @@ const FileSystem = struct {
         for (input, 0..) |ch, i| {
             if (ch < '0' or ch > '9')
                 break;
-            const segmentSize = (ch - '0');
+            const segmentSize: i32 = (ch - '0');
             if (@mod(i, 2) == 0) {
                 try diskMap.append(DiskMapType{ .file = .{ .id = id, .size = segmentSize } });
                 id += 1;
@@ -108,90 +106,16 @@ const FileSystem = struct {
         return .{
             .diskMap = diskMap,
             .movedMap = movedMap,
-            .holeIt = 1,
-            .fileIt = diskMap.items.len - 1,
         };
     }
 
-    pub fn swapFile(self: *FileSystem) !void {
-        if (self.diskMap.items[self.holeIt].free == self.diskMap.items[self.fileIt].file.size) {
-            std.mem.swap(DiskMapType, &self.diskMap.items[self.holeIt], &self.diskMap.items[self.fileIt]);
-        } else if (self.diskMap.items[self.holeIt].free > self.diskMap.items[self.fileIt].file.size) {
-            self.diskMap.items[self.holeIt].free -= self.diskMap.items[self.fileIt].file.size;
-            const tmp = self.diskMap.items[self.fileIt];
-            self.diskMap.items[self.fileIt] = DiskMapType{ .free = tmp.file.size };
-            try self.diskMap.insert(self.holeIt, tmp);
-            _ = self.holeNext();
-        }
-        return;
-    }
+    // pub fn popLeftId(self: FileSystem, id: usize) !usize {
+    //     return self.idBySize.get(id).?;
+    // }
 
     pub fn deinit(self: *FileSystem) void {
         self.diskMap.deinit();
         self.movedMap.deinit();
-    }
-
-    pub fn printDiskMap(self: FileSystem) void {
-        print("DiskMap:", .{});
-        for (self.diskMap.items) |value| {
-            switch (value) {
-                .file => print("[F{}|{}],", .{ value.file.id, value.file.size }),
-                .free => print("[H{}],", .{value.free}),
-            }
-        }
-        print("\n", .{});
-    }
-
-    pub fn holeNext(self: *FileSystem) ?DiskMapType {
-        self.holeIt += 1;
-        while (true) : (self.holeIt += 1) {
-            if (self.holeIt >= self.diskMap.items.len)
-                return null;
-            const item = self.diskMap.items[self.holeIt];
-            switch (item) {
-                .free => return item,
-                .file => break,
-            }
-        }
-        return null;
-    }
-
-    pub fn fileNext(self: *FileSystem) ?DiskMapType {
-        if (self.fileIt == 0)
-            return null;
-        self.fileIt -= 1;
-        while (true) : (self.fileIt -= 1) {
-            if (self.fileIt >= self.diskMap.items.len)
-                return null;
-            const item = self.diskMap.items[self.fileIt];
-            switch (item) {
-                .free => break,
-                .file => return item,
-            }
-        }
-        return null;
-    }
-
-    pub fn printString(self: FileSystem, allocator: Allocator) !void {
-        var buf = ArrayList(u8).init(allocator);
-        defer buf.deinit();
-        for (self.diskMap.items) |item| {
-            switch (item) {
-                .file => {
-                    for (0..item.file.size) |_| {
-                        var buffer: [50]u8 = .{0} ** 50;
-                        const res_str = try std.fmt.bufPrint(&buffer, "{d}", .{item.file.id});
-                        try buf.appendSlice(res_str);
-                    }
-                },
-                .free => {
-                    for (0..item.free) |_| {
-                        try buf.append('.');
-                    }
-                },
-            }
-        }
-        print("str: {s}\n", .{buf.items});
     }
 };
 
@@ -199,40 +123,7 @@ fn partTwo(allocator: Allocator, input: []const u8) !usize {
     var fs = try FileSystem.init(allocator, input);
     defer fs.deinit();
 
-    fs.printDiskMap();
-
-    try fs.printString(allocator);
-    var it: usize = 0;
-
-    var free_size = fs.diskMap.items[fs.holeIt];
-    var file = fs.diskMap.items[fs.fileIt];
-
-    while (true) : (it += 1) {
-        if (fs.holeIt > fs.fileIt) {
-            fs.holeIt = 0;
-            free_size = fs.holeNext() orelse break;
-        }
-
-        while (file.file.size > free_size.free) {
-            file = fs.fileNext() orelse break;
-            print("id: {d}:{d} --> {d}\n", .{ file.file.id, file.file.size, free_size.free });
-        }
-        print("out", .{});
-
-        if (free_size.free >= file.file.size) {
-            try fs.swapFile();
-            try fs.printString(allocator);
-            file = fs.fileNext() orelse break;
-            free_size = fs.holeNext() orelse break;
-            continue;
-        }
-
-        if (it == 100) break;
-    }
-
-    fs.printDiskMap();
-    // try fs.printString(allocator);
-
+    print("{any}\n", .{fs.diskMap.items});
     return 0;
 }
 
