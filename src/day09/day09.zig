@@ -108,7 +108,7 @@ const FileSystem = struct {
         return .{
             .diskMap = diskMap,
             .movedMap = movedMap,
-            .holeIt = 1,
+            .holeIt = 0,
             .fileIt = diskMap.items.len - 1,
         };
     }
@@ -126,6 +126,38 @@ const FileSystem = struct {
         return;
     }
 
+    pub fn getDisk(self: FileSystem, idx: usize) ?DiskMapType {
+        if (idx < self.diskMap.items.len) {
+            return self.diskMap.items[idx];
+        } else {
+            return null;
+        }
+    }
+
+    pub fn nextHole(self: *FileSystem) ?DiskMapType {
+        self.fileIt +%= 1;
+        while (true) {
+            const value = self.getDisk(self.holeIt) orelse return null;
+            switch (value) {
+                .file => {},
+                .free => return value,
+            }
+            self.holeIt += 1;
+        }
+    }
+
+    pub fn nextFile(self: *FileSystem) ?DiskMapType {
+        self.fileIt -%= 1;
+        while (true) {
+            const value = self.getDisk(self.fileIt) orelse return null;
+            switch (value) {
+                .file => if (self.movedMap.get(value.file.id) == null) return value,
+                .free => {},
+            }
+            self.fileIt -= 1;
+        }
+    }
+
     pub fn deinit(self: *FileSystem) void {
         self.diskMap.deinit();
         self.movedMap.deinit();
@@ -140,36 +172,6 @@ const FileSystem = struct {
             }
         }
         print("\n", .{});
-    }
-
-    pub fn holeNext(self: *FileSystem) ?DiskMapType {
-        self.holeIt += 1;
-        while (true) : (self.holeIt += 1) {
-            if (self.holeIt >= self.diskMap.items.len)
-                return null;
-            const item = self.diskMap.items[self.holeIt];
-            switch (item) {
-                .free => return item,
-                .file => break,
-            }
-        }
-        return null;
-    }
-
-    pub fn fileNext(self: *FileSystem) ?DiskMapType {
-        if (self.fileIt == 0)
-            return null;
-        self.fileIt -= 1;
-        while (true) : (self.fileIt -= 1) {
-            if (self.fileIt >= self.diskMap.items.len)
-                return null;
-            const item = self.diskMap.items[self.fileIt];
-            switch (item) {
-                .free => break,
-                .file => return item,
-            }
-        }
-        return null;
     }
 
     pub fn printString(self: FileSystem, allocator: Allocator) !void {
@@ -201,37 +203,15 @@ fn partTwo(allocator: Allocator, input: []const u8) !usize {
 
     fs.printDiskMap();
 
-    try fs.printString(allocator);
-    var it: usize = 0;
-
-    var free_size = fs.diskMap.items[fs.holeIt];
-    var file = fs.diskMap.items[fs.fileIt];
-
-    while (true) : (it += 1) {
-        if (fs.holeIt > fs.fileIt) {
-            fs.holeIt = 0;
-            free_size = fs.holeNext() orelse break;
+    while (true) {
+        if (fs.nextFile()) |entry| {
+            std.debug.print("Processing entry: {any}\n", .{entry});
+        } else {
+            break; // No more entries.
         }
-
-        while (file.file.size > free_size.free) {
-            file = fs.fileNext() orelse break;
-            print("id: {d}:{d} --> {d}\n", .{ file.file.id, file.file.size, free_size.free });
-        }
-        print("out", .{});
-
-        if (free_size.free >= file.file.size) {
-            try fs.swapFile();
-            try fs.printString(allocator);
-            file = fs.fileNext() orelse break;
-            free_size = fs.holeNext() orelse break;
-            continue;
-        }
-
-        if (it == 100) break;
     }
 
     fs.printDiskMap();
-    // try fs.printString(allocator);
 
     return 0;
 }
