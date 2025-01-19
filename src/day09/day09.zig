@@ -63,157 +63,113 @@ fn partOne(allocator: Allocator, input: []const u8) !usize {
         std.mem.swap(i64, &arr.items[first_free], &arr.items[last_poped]);
     }
 
-    var checksum: usize = 0;
+    var total: usize = 0;
     for (arr.items, 0..) |file_id, it| {
         if (file_id == -1)
             break;
-        checksum += (@as(usize, @intCast(file_id)) * it);
+        total += (@as(usize, @intCast(file_id)) * it);
     }
 
-    return checksum;
+    return total;
 }
 
-const File = struct {
-    id: usize,
+const Block = struct {
+    id: i32,
     size: usize,
 };
 
-const DiskMapType = union(enum) {
-    free: usize,
-    file: File,
-};
-
-const FileSystem = struct {
-    diskMap: ArrayList(DiskMapType),
-    movedMap: AutoHashMap(usize, bool),
-    holeIt: usize,
-    fileIt: usize,
-
-    pub fn init(allocator: Allocator, input: []const u8) !FileSystem {
-        var diskMap = ArrayList(DiskMapType).init(allocator);
-        const movedMap = AutoHashMap(usize, bool).init(allocator);
-
-        var id: usize = 0;
-        for (input, 0..) |ch, i| {
-            if (ch < '0' or ch > '9')
-                break;
-            const segmentSize = (ch - '0');
-            if (@mod(i, 2) == 0) {
-                try diskMap.append(DiskMapType{ .file = .{ .id = id, .size = segmentSize } });
-                id += 1;
+fn printDisk(disk: ArrayList(*Block)) void {
+    for (disk.items) |item| {
+        for (0..item.size) |_| {
+            if (item.id == -1) {
+                print(".", .{});
             } else {
-                try diskMap.append(DiskMapType{ .free = segmentSize });
+                print("{}", .{item.id});
             }
         }
-        return .{
-            .diskMap = diskMap,
-            .movedMap = movedMap,
-            .holeIt = 0,
-            .fileIt = diskMap.items.len - 1,
-        };
     }
+    print("\n", .{});
+}
 
-    pub fn swapFile(self: *FileSystem) !void {
-        if (self.diskMap.items[self.holeIt].free == self.diskMap.items[self.fileIt].file.size) {
-            std.mem.swap(DiskMapType, &self.diskMap.items[self.holeIt], &self.diskMap.items[self.fileIt]);
-        } else if (self.diskMap.items[self.holeIt].free > self.diskMap.items[self.fileIt].file.size) {
-            self.diskMap.items[self.holeIt].free -= self.diskMap.items[self.fileIt].file.size;
-            const tmp = self.diskMap.items[self.fileIt];
-            self.diskMap.items[self.fileIt] = DiskMapType{ .free = tmp.file.size };
-            try self.diskMap.insert(self.holeIt, tmp);
-            _ = self.holeNext();
-        }
-        return;
-    }
-
-    pub fn getDisk(self: FileSystem, idx: usize) ?DiskMapType {
-        if (idx < self.diskMap.items.len) {
-            return self.diskMap.items[idx];
+fn checksum(disk: ArrayList(*Block)) usize {
+    var mul: usize = 0;
+    var total: usize = 0;
+    for (disk.items) |item| {
+        if (item.id == -1) {
+            mul += item.size;
         } else {
-            return null;
-        }
-    }
-
-    pub fn nextHole(self: *FileSystem) ?DiskMapType {
-        self.fileIt +%= 1;
-        while (true) {
-            const value = self.getDisk(self.holeIt) orelse return null;
-            switch (value) {
-                .file => {},
-                .free => return value,
-            }
-            self.holeIt += 1;
-        }
-    }
-
-    pub fn nextFile(self: *FileSystem) ?DiskMapType {
-        self.fileIt -%= 1;
-        while (true) {
-            const value = self.getDisk(self.fileIt) orelse return null;
-            switch (value) {
-                .file => if (self.movedMap.get(value.file.id) == null) return value,
-                .free => {},
-            }
-            self.fileIt -= 1;
-        }
-    }
-
-    pub fn deinit(self: *FileSystem) void {
-        self.diskMap.deinit();
-        self.movedMap.deinit();
-    }
-
-    pub fn printDiskMap(self: FileSystem) void {
-        print("DiskMap:", .{});
-        for (self.diskMap.items) |value| {
-            switch (value) {
-                .file => print("[F{}|{}],", .{ value.file.id, value.file.size }),
-                .free => print("[H{}],", .{value.free}),
+            for (0..item.size) |_| {
+                total += (mul * @as(usize, @intCast(item.id)));
+                mul += 1;
             }
         }
-        print("\n", .{});
     }
-
-    pub fn printString(self: FileSystem, allocator: Allocator) !void {
-        var buf = ArrayList(u8).init(allocator);
-        defer buf.deinit();
-        for (self.diskMap.items) |item| {
-            switch (item) {
-                .file => {
-                    for (0..item.file.size) |_| {
-                        var buffer: [50]u8 = .{0} ** 50;
-                        const res_str = try std.fmt.bufPrint(&buffer, "{d}", .{item.file.id});
-                        try buf.appendSlice(res_str);
-                    }
-                },
-                .free => {
-                    for (0..item.free) |_| {
-                        try buf.append('.');
-                    }
-                },
-            }
-        }
-        print("str: {s}\n", .{buf.items});
-    }
-};
+    return total;
+}
 
 fn partTwo(allocator: Allocator, input: []const u8) !usize {
-    var fs = try FileSystem.init(allocator, input);
-    defer fs.deinit();
+    var disk = ArrayList(*Block).init(allocator);
+    defer {
+        for (disk.items) |block| {
+            allocator.destroy(block);
+        }
+        disk.deinit();
+    }
+    var files = ArrayList(*Block).init(allocator);
+    defer files.deinit();
 
-    fs.printDiskMap();
-
-    while (true) {
-        if (fs.nextFile()) |entry| {
-            std.debug.print("Processing entry: {any}\n", .{entry});
+    var id: usize = 0;
+    for (input, 0..) |ch, i| {
+        if (ch < '0' or ch > '9')
+            break;
+        const blockSize: usize = (ch - '0');
+        if (@mod(i, 2) == 0) {
+            const block = try allocator.create(Block);
+            block.* = .{ .id = @intCast(id), .size = blockSize };
+            try disk.append(block);
+            try files.append(block);
+            id += 1;
         } else {
-            break; // No more entries.
+            const block = try allocator.create(Block);
+            block.* = .{ .id = -1, .size = blockSize };
+            try disk.append(block);
         }
     }
 
-    fs.printDiskMap();
+    // printDisk(disk);
 
-    return 0;
+    for (0..files.items.len - 1) |i| {
+        var file = files.items[files.items.len - 1 - i];
+
+        for (0..disk.items.len - 1) |j| {
+            var free = disk.items[j];
+            // print("try: {d} at {d}\n", .{ file.id, j });
+
+            if (free.id == file.id)
+                break;
+
+            if (free.id == -1) {
+                if (file.size > free.size)
+                    continue;
+
+                if (free.size == file.size) {
+                    free.id = file.id;
+                    file.id = -1;
+                } else if (file.size < free.size) {
+                    const remain = try allocator.create(Block);
+                    remain.* = Block{ .id = -1, .size = free.size - file.size };
+                    free.id = file.id;
+                    free.size = file.size;
+                    file.id = -1;
+                    try disk.insert(j + 1, remain);
+                }
+                break;
+            }
+        }
+    }
+    // printDisk(disk);
+
+    return checksum(disk);
 }
 
 pub fn main() !void {
@@ -232,14 +188,14 @@ pub fn main() !void {
     // const result_part_one = try partOne(gpa, p1_input);
     // print("Part one result: {d}\n", .{result_part_one});
 
-    // const p2_input = try openAndRead(page_allocator, "./src/day09/p1_input.txt");
-    // defer page_allocator.free(p2_input); // Free the allocated memory after use
+    const p2_input = try openAndRead(page_allocator, "./src/day09/p2_input.txt");
+    defer page_allocator.free(p2_input); // Free the allocated memory after use
 
     const result_part_two_example = try partTwo(gpa, p1_example_input);
     print("Part two example result: {d}\n", .{result_part_two_example});
 
-    // const result_part_two = try partTwo(gpa, p2_input);
-    // print("Part two result: {d}\n", .{result_part_two});
+    const result_part_two = try partTwo(gpa, p2_input);
+    print("Part two result: {d}\n", .{result_part_two});
 
     const leaks = general_purpose_allocator.deinit();
     _ = leaks;
