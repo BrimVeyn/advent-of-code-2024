@@ -182,11 +182,11 @@ pub fn main() !void {
     const p1_input = try openAndRead(page_allocator, "./src/day09/p1_input.txt");
     defer page_allocator.free(p1_input); // Free the allocated memory after use
 
-    // const result_part_one_example = try partOne(gpa, p1_example_input);
-    // print("Part one example result: {d}\n", .{result_part_one_example});
-    //
-    // const result_part_one = try partOne(gpa, p1_input);
-    // print("Part one result: {d}\n", .{result_part_one});
+    const result_part_one_example = try partOne(gpa, p1_example_input);
+    print("Part one example result: {d}\n", .{result_part_one_example});
+
+    const result_part_one = try partOne(gpa, p1_input);
+    print("Part one result: {d}\n", .{result_part_one});
 
     const p2_input = try openAndRead(page_allocator, "./src/day09/p2_input.txt");
     defer page_allocator.free(p2_input); // Free the allocated memory after use
@@ -200,8 +200,3 @@ pub fn main() !void {
     const leaks = general_purpose_allocator.deinit();
     _ = leaks;
 }
-
-// 2333133121414131402
-
-// 00777111...222633354.................
-// 00...111...222.333...4..5....6....777
