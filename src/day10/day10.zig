@@ -25,14 +25,25 @@ fn parseMap(allocator: Allocator, input: []u8) !ArrayList([]u8) {
 }
 
 const Point = struct {
-    x: i32,
-    y: i32,
+    x: i32 = 5,
+    y: i32 = 5,
+
+    pub const default: Point = .{
+        .x = 0,
+        .y = 0,
+    };
 };
 
 const Context = struct {
     p: Point,
     trails: AutoArrayHashMap(Point, bool),
     rating: *usize,
+
+    pub const default: Context = .{
+        .p = .default,
+        .trails = undefined,
+        .rating = undefined,
+    };
 
     pub fn init(allocator: Allocator, y: usize, x: usize) !Context {
         return .{

@@ -1,0 +1,91 @@
+const std = @import("std");
+const print = std.debug.print;
+const mem = std.mem;
+const page_allocator = std.heap.page_allocator;
+const ArrayList = std.ArrayList;
+const AutoHashMap = std.AutoHashMap;
+const AutoArrayHashMap = std.AutoArrayHashMap;
+const Allocator = std.mem.Allocator;
+
+fn openAndRead(allocator: Allocator, path: []const u8) ![]u8 {
+    var file = try std.fs.cwd().openFile(path, .{});
+    defer file.close();
+
+    const file_content = try file.readToEndAlloc(allocator, 1_000_000);
+    return file_content;
+}
+
+fn hasEvenDigits(n: *i64) bool {
+    const float_n = std.math.floor(@as(f64, @floatFromInt(n.*)));
+    const digitCount = std.math.log10(float_n) + 1;
+
+    print("n: {d} {d}\n", .{ n.*, digitCount });
+
+    return @as(u64, @intFromFloat(digitCount)) % 2 == 0;
+}
+
+fn blink(stone: *i64) !?i64 {
+    var rhs: ?i64 = null;
+    if (stone.* == 0) {
+        stone.* = 1;
+    } else if (hasEvenDigits(stone)) {
+        var buffer: [100]u8 = .{0} ** 100;
+        const bytes = std.mem.asBytes(stone.*);
+        const stone_str = try std.fmt.bufPrint(&buffer, "{d}", .{stone.*});
+        const lhs = try std.fmt.parseInt(i64, stone_str[0 .. stone_str.len / 2], 10);
+        rhs = try std.fmt.parseInt(i64, stone_str[stone_str.len / 2 ..], 10);
+        stone.* = lhs;
+    } else {
+        stone.* *= 2024;
+    }
+    return rhs;
+}
+
+fn partOne(allocator: Allocator, input: []u8) !usize {
+    var stones = ArrayList(i64).init(allocator);
+    defer stones.deinit();
+
+    var it = std.mem.tokenizeScalar(u8, input[0 .. input.len - 1], ' ');
+    while (it.next()) |stone| {
+        print("stone: |{s}|\n", .{stone});
+        try stones.append(try std.fmt.parseInt(i64, stone, 10));
+    }
+
+    for (stones.items) |*stone| {
+        const rhs: ?i64 = try blink(stone);
+        _ = rhs;
+    }
+
+    print("stones: {any}\n", .{stones.items});
+
+    return 0;
+}
+
+pub fn main() !void {
+    var general_purpose_allocator: std.heap.GeneralPurposeAllocator(.{}) = .init;
+    const gpa = general_purpose_allocator.allocator();
+
+    const p1_example_input = try openAndRead(page_allocator, "./src/day11/p1_example.txt");
+    defer page_allocator.free(p1_example_input); // Free the allocated memory after use
+
+    // const p1_input = try openAndRead(page_allocator, "./src/day11/p1_input.txt");
+    // defer page_allocator.free(p1_input); // Free the allocated memory after use
+
+    const result_part_one_example = try partOne(gpa, p1_example_input);
+    print("Part one example result: {d}\n", .{result_part_one_example});
+
+    // const result_part_one = try partOne(gpa, p1_input);
+    // print("Part one result: {d}\n", .{result_part_one});
+    //
+    // const p2_input = try openAndRead(page_allocator, "./src/day10/p2_input.txt");
+    // defer page_allocator.free(p2_input); // Free the allocated memory after use
+    //
+    // const result_part_two_example = try partTwo(gpa, p1_example_input);
+    // print("Part two example result: {d}\n", .{result_part_two_example});
+    //
+    // const result_part_two = try partTwo(gpa, p2_input);
+    // print("Part two result: {d}\n", .{result_part_two});
+
+    const leaks = general_purpose_allocator.deinit();
+    _ = leaks;
+}
