@@ -57,18 +57,40 @@ fn dfs(ctx: *Context, map: ArrayList([]u8)) !void {
     const base_point = ctx.p;
     const directions: [4]Point = .{ .{ .x = -1, .y = 0 }, .{ .x = 1, .y = 0 }, .{ .x = 0, .y = 1 }, .{ .x = 0, .y = -1 } };
 
+    var neihbors: [4]bool = .{ false, false, false, false };
+
     for (0..directions.len) |i| {
         ctx.p.x += directions[i].x;
         ctx.p.y += directions[i].y;
 
         if (!inBounds(map, ctx.p) or isFence(map, ctx.p, ctx.id)) {
             ctx.perimeter += 1;
+            neihbors[i] = true;
         } else {
             try dfs(ctx, map);
         }
 
         ctx.p = base_point;
     }
+
+    var nCount: usize = 0;
+    for (0..neihbors.len) |j| {
+        if (neihbors[j] == true) nCount += 1;
+    }
+
+    // print("B: {d},{d} --> {d}\n", .{ ctx.p.y, ctx.p.x, ctx.sides });
+
+    if (nCount == 1) {
+        ctx.sides += 2;
+    } else if (nCount == 2 and !((neihbors[0] and neihbors[1]) or (neihbors[2] and neihbors[3]))) {
+        ctx.sides += 1;
+    } else if (nCount == 3) {
+        ctx.sides += 2;
+    } else if (nCount == 4) {
+        ctx.sides += 4;
+    }
+
+    // print("A: {d},{d} --> {d}\n", .{ ctx.p.y, ctx.p.x, ctx.sides });
 }
 
 fn partOne(allocator: Allocator, input: []u8) !usize {
@@ -159,11 +181,11 @@ pub fn main() !void {
     const p1_input = try openAndRead("./src/day12/p1_input.txt", page_allocator);
     defer page_allocator.free(p1_input); // Free the allocated memory after use
 
-    const result_part_one_example = try partOne(gpa, p1_example_input);
-    print("Part one example result: {d}\n", .{result_part_one_example});
-
-    const result_part_one = try partOne(gpa, p1_input);
-    print("Part one result: {d}\n", .{result_part_one});
+    // const result_part_one_example = try partOne(gpa, p1_example_input);
+    // print("Part one example result: {d}\n", .{result_part_one_example});
+    //
+    // const result_part_one = try partOne(gpa, p1_input);
+    // print("Part one result: {d}\n", .{result_part_one});
 
     const p2_input = try openAndRead("./src/day08/p2_input.txt", page_allocator);
     defer page_allocator.free(p2_input); // Free the allocated memory after use
