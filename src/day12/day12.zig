@@ -36,6 +36,9 @@ const Context = struct {
     perimeter: usize,
 };
 
+const directions: [4]Point = .{ .{ .x = 1, .y = 0 }, .{ .x = 0, .y = 1 }, .{ .x = -1, .y = 0 }, .{ .x = 0, .y = -1 } };
+const corners: [4]Point = .{ .{ .x = 1, .y = 1 }, .{ .x = -1, .y = 1 }, .{ .x = -1, .y = -1 }, .{ .x = 1, .y = -1 } };
+
 fn inBounds(map: ArrayList([]u8), p: Point) bool {
     return (p.y >= 0 and p.y < map.items.len and p.x >= 0 and p.x < map.items[0].len);
 }
@@ -55,9 +58,8 @@ fn dfs(ctx: *Context, map: ArrayList([]u8)) !void {
     try ctx.visited.put(ctx.p, true);
 
     const base_point = ctx.p;
-    const directions: [4]Point = .{ .{ .x = -1, .y = 0 }, .{ .x = 1, .y = 0 }, .{ .x = 0, .y = 1 }, .{ .x = 0, .y = -1 } };
 
-    var neihbors: [4]bool = .{ false, false, false, false };
+    var neighbours: [4]bool = .{ false, false, false, false };
 
     for (0..directions.len) |i| {
         ctx.p.x += directions[i].x;
@@ -65,32 +67,27 @@ fn dfs(ctx: *Context, map: ArrayList([]u8)) !void {
 
         if (!inBounds(map, ctx.p) or isFence(map, ctx.p, ctx.id)) {
             ctx.perimeter += 1;
-            neihbors[i] = true;
         } else {
+            neighbours[i] = true;
             try dfs(ctx, map);
         }
 
         ctx.p = base_point;
     }
 
-    var nCount: usize = 0;
-    for (0..neihbors.len) |j| {
-        if (neihbors[j] == true) nCount += 1;
+    for (corners, 0..) |corner, j| {
+        if (!neighbours[j] and !neighbours[(j + 1) % 4]) {
+            ctx.sides += 1;
+        }
+        const cor = Point{ .x = ctx.p.x + corner.x, .y = ctx.p.y + corner.y };
+        if (inBounds(map, cor)) {
+            if (map.items[@intCast(cor.y)][@intCast(cor.x)] == ctx.id)
+                continue;
+        }
+        if (neighbours[j] and neighbours[(j + 1) % 4]) {
+            ctx.sides += 1;
+        }
     }
-
-    // print("B: {d},{d} --> {d}\n", .{ ctx.p.y, ctx.p.x, ctx.sides });
-
-    if (nCount == 1) {
-        ctx.sides += 2;
-    } else if (nCount == 2 and !((neihbors[0] and neihbors[1]) or (neihbors[2] and neihbors[3]))) {
-        ctx.sides += 1;
-    } else if (nCount == 3) {
-        ctx.sides += 2;
-    } else if (nCount == 4) {
-        ctx.sides += 4;
-    }
-
-    // print("A: {d},{d} --> {d}\n", .{ ctx.p.y, ctx.p.x, ctx.sides });
 }
 
 fn partOne(allocator: Allocator, input: []u8) !usize {
@@ -181,20 +178,20 @@ pub fn main() !void {
     const p1_input = try openAndRead("./src/day12/p1_input.txt", page_allocator);
     defer page_allocator.free(p1_input); // Free the allocated memory after use
 
-    // const result_part_one_example = try partOne(gpa, p1_example_input);
-    // print("Part one example result: {d}\n", .{result_part_one_example});
-    //
-    // const result_part_one = try partOne(gpa, p1_input);
-    // print("Part one result: {d}\n", .{result_part_one});
+    const result_part_one_example = try partOne(gpa, p1_example_input);
+    print("Part one example result: {d}\n", .{result_part_one_example});
 
-    const p2_input = try openAndRead("./src/day08/p2_input.txt", page_allocator);
+    const result_part_one = try partOne(gpa, p1_input);
+    print("Part one result: {d}\n", .{result_part_one});
+
+    const p2_input = try openAndRead("./src/day12/p1_input.txt", page_allocator);
     defer page_allocator.free(p2_input); // Free the allocated memory after use
 
     const result_part_two_example = try partTwo(gpa, p1_example_input);
     print("Part two example result: {d}\n", .{result_part_two_example});
-    //
-    // const result_part_two = try partTwo(gpa, p2_input);
-    // print("Part two result: {d}\n", .{result_part_two});
+
+    const result_part_two = try partTwo(gpa, p2_input);
+    print("Part two result: {d}\n", .{result_part_two});
 
     const leaks = general_purpose_allocator.deinit();
     _ = leaks;
