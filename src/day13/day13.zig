@@ -80,14 +80,65 @@ fn parseMachine(machine: []const u8, p: Part) !Context {
     };
 }
 
+fn modInverse(a: u128, mod: u128) u128 {
+    for (0..1000) |i| {
+        if (@mod(a * i, mod) == 1)
+            return i;
+    }
+    return 0;
+}
+
+fn trySolve(ctx: Context, const_A: i128, const_B: i128, kA: i128, kB: i128) void {
+    const bAx128: i128 = @intCast(ctx.buttonA.x);
+    const bAy128: i128 = @intCast(ctx.buttonA.y);
+    const bBx128: i128 = @intCast(ctx.buttonB.x);
+    const bBy128: i128 = @intCast(ctx.buttonB.y);
+    for (0..10) |k| {
+        const nA = (kA * k) + const_A;
+        const nB = const_B - (kB * k);
+        const resX = nA * bAx128 + nB * bBx128;
+        const resY = nA * bAy128 + nB * bBy128;
+        print("resX: {d} | resY: {d}\n", .{ resX, resY });
+        // print("resX: {d}\n", .{constant_a * @as(u128, @intCast(ctx.buttonA.x)) + constant_b * @as(u128, @intCast(ctx.buttonB.x))});
+    }
+}
+
 fn isSolvable(ctx: Context) !bool {
     const gcdX = std.math.gcd(@as(u64, @intCast(ctx.buttonA.x)), @as(u64, @intCast(ctx.buttonB.x)));
     const gcdY = std.math.gcd(@as(u64, @intCast(ctx.buttonA.y)), @as(u64, @intCast(ctx.buttonB.y)));
 
-    if (@mod(ctx.prize.x, @as(i64, @intCast(gcdX))) == 0 and @mod(ctx.prize.y, @as(i64, @intCast(gcdY))) == 0) {
+    if (@mod(ctx.prize.x, @as(i64, @intCast(gcdX))) != 0 or @mod(ctx.prize.y, @as(i64, @intCast(gcdY))) != 0) {
         print("gcdX: {d}, gcdY: {d}\n", .{ gcdX, gcdY });
-        return true;
+        return false;
     }
+
+    const modulo = ctx.buttonB.x;
+    const prizeXrem = @rem(ctx.prize.x, modulo);
+    const aXrem = @rem(ctx.buttonA.x, modulo);
+
+    print("{d} - {d}a = 0 [{d}]\n", .{ prizeXrem, aXrem, modulo });
+
+    const gcdaXprizeX = std.math.gcd(@as(u64, @intCast(aXrem)), @as(u64, @intCast(modulo)));
+    const simpPrizeX = @divExact(@as(u128, @intCast(prizeXrem)), @as(u128, @intCast(gcdaXprizeX)));
+    const simpaX = @divExact(@as(u128, @intCast(aXrem)), @as(u128, @intCast(gcdaXprizeX)));
+    const simpModulo = @divExact(@as(u128, @intCast(modulo)), @as(u128, @intCast(gcdaXprizeX)));
+    print("{d}nA = {d} [{d}]\n", .{ simpaX, simpPrizeX, simpModulo });
+
+    const simpAinverse = modInverse(simpaX, simpModulo);
+
+    print("nA = {d} * {d} [{d}]\n", .{ simpPrizeX, simpAinverse, simpModulo });
+
+    const constant_a = @mod(simpPrizeX * simpAinverse, simpModulo);
+    print("nA = {d}k + {d}\n", .{ simpModulo, constant_a });
+
+    const kB = @as(u128, @intCast(ctx.buttonA.x)) * simpModulo / @as(u128, @intCast(ctx.buttonB.x));
+    const constant_b = (@as(u128, @intCast(ctx.prize.x)) - (@as(u128, @intCast(ctx.buttonA.x)) * constant_a)) / @as(u128, @intCast(ctx.buttonB.x));
+    print("nB = {d} - {d}k\n", .{ constant_b, kB });
+
+    trySolve(ctx, @as(i128, @intCast(constant_a)), @as(i128, @intCast(constant_b)), @as(i128, @intCast(simpModulo)), @as(i128, @intCast(kB)));
+    // print("resX: {d}\n", .{constant_a * @as(u128, @intCast(ctx.buttonA.x)) + constant_b * @as(u128, @intCast(ctx.buttonB.x))});
+    // print("resY: {d}\n", .{constant_a * @as(u128, @intCast(ctx.buttonA.y)) + constant_b * @as(u128, @intCast(ctx.buttonB.y))});
+
     return false;
 }
 
