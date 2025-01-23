@@ -155,6 +155,7 @@ fn rl_display(allocator: Allocator, input: []u8) !void {
                 robot.pos[1] = @mod((robot.pos[1] - robot.velocity[1]), @intFromEnum(Dim.Y));
             }
         }
+        // try partTwo(&robots, &start);
 
         for (robots.items) |robot| {
             const y: usize = @intCast(robot.pos[1]);
@@ -206,4 +207,3 @@ pub fn main() !void {
     const leaks = general_purpose_allocator.deinit();
     _ = leaks;
 }
-
