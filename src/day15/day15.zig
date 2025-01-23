@@ -98,6 +98,8 @@ fn parseInput(allocator: Allocator, input: []u8, p: Part) !Context {
     };
 }
 
+var moveIt: i32 = 0;
+
 fn printMap(map: ArrayList([]u8), move: @Vector(2, i32)) void {
     var ch: u8 = '0';
     switch (move[0]) {
@@ -114,7 +116,7 @@ fn printMap(map: ArrayList([]u8), move: @Vector(2, i32)) void {
             if (move[1] == -1) ch = '^';
         },
     }
-    print("\nMove {c}:\n", .{ch});
+    print("\nMove {d} {c}:\n", .{ moveIt, ch });
     for (map.items) |line| {
         print("{s}\n", .{line});
     }
@@ -176,32 +178,38 @@ fn partOne(allocator: Allocator, input: []u8) !usize {
     return computeGPS(ctx.map);
 }
 
+fn findBox(boxes: *ArrayList(Vec2), box: Vec2) ?bool {
+    for (boxes.items) |item| {
+        if (item[0] == box[0] and item[1] == box[1])
+            return true;
+    }
+    return null;
+}
+
 fn collectVert(allocator: Allocator, ctx: Context, boxes: *ArrayList(Vec2), dY: i32) !bool {
     var visited = AutoArrayHashMap(Vec2, bool).init(allocator);
     defer visited.deinit();
 
     while (true) {
         if (visited.count() == boxes.items.len) break;
-        for (boxes.items) |box| {
-            if (visited.get(box) != null) continue;
+        var dup_boxes = try boxes.clone();
+        defer {
+            boxes.deinit();
+            boxes.* = dup_boxes;
+        }
 
-            if (ctx.map.items[@intCast(box[1] + dY)][@intCast(box[0])] == ']') {
-                if (visited.get(.{ box[0], box[1] + dY }) == null) {
-                    try boxes.append(.{ box[0], box[1] + dY });
-                }
-                if (visited.get(.{ box[0] - 1, box[1] + dY }) == null) {
-                    try boxes.append(.{ box[0] - 1, box[1] + dY });
-                }
-            } else if (ctx.map.items[@intCast(box[1] + dY)][@intCast(box[0])] == '[') {
-                if (visited.get(.{ box[0], box[1] + dY }) == null) {
-                    try boxes.append(.{ box[0], box[1] + dY });
-                }
-                if (visited.get(.{ box[0] + 1, box[1] + dY }) == null) {
-                    try boxes.append(.{ box[0] + 1, box[1] + dY });
-                }
-            } else if (ctx.map.items[@intCast(box[1] + dY)][@intCast(box[0])] == '#') {
-                return false;
-            }
+        for (boxes.items) |box| {
+            if (visited.get(box) != null)
+                continue;
+
+            const ch = ctx.map.items[@intCast(box[1] + dY)][@intCast(box[0])];
+            if (ch == ']' or ch == '[') {
+                const vertOne = Vec2{ box[0], box[1] + dY };
+                var vertOneHor = Vec2{ box[0], box[1] + dY };
+                vertOneHor[0] += if (ch == '[') 1 else -1;
+                if (findBox(&dup_boxes, vertOne) == null) try dup_boxes.append(vertOne);
+                if (findBox(&dup_boxes, vertOneHor) == null) try dup_boxes.append(vertOneHor);
+            } else if (ch == '#') return false;
             try visited.put(box, true);
         }
     }
@@ -215,12 +223,12 @@ fn partTwo(allocator: Allocator, input: []u8) !usize {
         ctx.map.deinit();
         ctx.moves.deinit();
     }
-    printMap(ctx.map, .{ 0, 0 });
-    while (ctx.moves.popOrNull()) |move| {
+    // printMap(ctx.map, .{ 0, 0 });
+    while (ctx.moves.popOrNull()) |move| : (moveIt += 1) {
         const nextX = ctx.lantern[0] + move[0];
         const nextY = ctx.lantern[1] + move[1];
         if (ctx.map.items[@intCast(nextY)][@intCast(nextX)] == '#') {
-            printMap(ctx.map, move);
+            // printMap(ctx.map, move);
             continue;
         }
 
@@ -234,7 +242,7 @@ fn partTwo(allocator: Allocator, input: []u8) !usize {
                 defer boxes.deinit();
 
                 var start: Vec2 = .{ nextX, nextY };
-                print("Start: {d},{d}\n", .{ nextY, nextX });
+                // print("Start: {d},{d}\n", .{ nextY, nextX });
                 while (ctx.map.items[@intCast(start[1])][@intCast(start[0])] == '[' or
                     ctx.map.items[@intCast(start[1])][@intCast(start[0])] == ']')
                 {
@@ -243,20 +251,16 @@ fn partTwo(allocator: Allocator, input: []u8) !usize {
                     start[1] += move[1];
                 }
                 if (ctx.map.items[@intCast(start[1])][@intCast(start[0])] == '#') {
-                    printMap(ctx.map, move);
                     continue;
                 }
 
-                print("boxes: {any}\n", .{boxes.items});
+                // print("boxes: {any}\n", .{boxes.items});
                 for (0..boxes.items.len) |i| {
                     const box_half = boxes.items[boxes.items.len - i - 1];
-                    ctx.map.items[@intCast(box_half[1])][@intCast(box_half[0])] = if (ctx.map.items[@intCast(box_half[1])][@intCast(box_half[0])] == ']') '[' else ']';
+                    ctx.map.items[@intCast(box_half[1])][@intCast(box_half[0] + move[0])] = ctx.map.items[@intCast(box_half[1])][@intCast(box_half[0])];
                 }
-                // print("Next: {d},{d}\n", .{ nextY, nextX });
-                // print("Caisse: {d},{d}\n", .{ start[1], start[0] });
                 ctx.map.items[@intCast(nextY)][@intCast(nextX)] = '@';
                 ctx.map.items[@intCast(ctx.lantern[1])][@intCast(ctx.lantern[0])] = '.';
-                ctx.map.items[@intCast(start[1])][@intCast(start[0])] = '[';
                 ctx.lantern = .{ nextX, nextY };
             } else {
                 var boxes = ArrayList(Vec2).init(allocator);
@@ -268,7 +272,7 @@ fn partTwo(allocator: Allocator, input: []u8) !usize {
                 } else {
                     try boxes.append(.{ nextX + 1, nextY });
                 }
-                print("Collected: {any}\n", .{boxes.items});
+                // printMap(ctx.map, move);
                 const canMove = try collectVert(allocator, ctx, &boxes, move[1]);
                 if (canMove) {
                     for (0..boxes.items.len) |i| {
@@ -281,10 +285,9 @@ fn partTwo(allocator: Allocator, input: []u8) !usize {
                     ctx.lantern = boxes.items[0];
                     ctx.map.items[@intCast(ctx.lantern[1])][@intCast(ctx.lantern[0])] = '@';
                 }
-                print("Collected: {any}\n", .{boxes.items});
             }
         }
-        printMap(ctx.map, move);
+        // printMap(ctx.map, move);
     }
     return computeGPS(ctx.map);
 }
@@ -308,8 +311,8 @@ pub fn main() !void {
     const result_part_two_example = try partTwo(gpa, p1_example_input);
     print("Part two example result: {d}\n", .{result_part_two_example});
 
-    // const result_part_two = try partTwo(gpa, p1_input);
-    // print("Part two result: {d}\n", .{result_part_two});
+    const result_part_two = try partTwo(gpa, p1_input);
+    print("Part two result: {d}\n", .{result_part_two});
 
     const leaks = general_purpose_allocator.deinit();
     _ = leaks;
