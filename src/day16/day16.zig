@@ -7,7 +7,8 @@ const ArrayListU = std.ArrayListUnmanaged;
 const AutoHashMap = std.AutoHashMap;
 const AutoArrayHashMap = std.AutoArrayHashMap;
 const Allocator = std.mem.Allocator;
-const Vec2 = @Vector(2, i32);
+const uVec2 = @Vector(2, usize);
+const iVec2 = @Vector(2, i32);
 
 fn openAndRead(path: []const u8, allocator: Allocator) ![]u8 {
     var file = try std.fs.cwd().openFile(path, .{});
@@ -19,56 +20,86 @@ fn openAndRead(path: []const u8, allocator: Allocator) ![]u8 {
 
 const Context = struct {
     maze: ArrayList([]u8),
-    deer: Vec2,
-    end: Vec2,
-    moves: usize = 0,
-    turns: usize = 0,
-    visited: AutoHashMap(Vec2, bool),
-
-    pub fn clone(self: Context) !Context {
-        return .{
-            .maze = self.maze,
-            .deer = self.deer,
-            .end = self.end,
-            .moves = self.moves,
-            .turns = self.turns,
-            .direction = self.direction,
-            .visited = try self.visited.clone(),
-        };
-    }
 };
 
-fn parseInput(alloc: Allocator, input: []u8) !Context {
-    var lines = mem.tokenizeScalar(u8, input, '\n');
-    var startPos: Vec2 = undefined;
-    var endPos: Vec2 = undefined;
-    var y: i32 = 0;
+const Special = enum {
+    START,
+    FINISH,
+};
 
+const INF: usize = 9999;
+
+const Direction = enum {
+    UP,
+    RIGHT,
+    DOWN,
+    LEFT,
+};
+
+const Node = struct {
+    up: ?*Node = null,
+    right: ?*Node = null,
+    down: ?*Node = null,
+    left: ?*Node = null,
+};
+
+fn parseInput(alloc: Allocator, input: []u8) !struct { [][]u8, uVec2 } {
     var maze = ArrayList([]u8).init(alloc);
+
+    var lines = mem.tokenizeScalar(u8, input, '\n');
+    var start: uVec2 = undefined;
+    var y: usize = 0;
     while (lines.next()) |line| : (y += 1) {
-        if (mem.indexOf(u8, line, "E")) |x| {
-            endPos = .{ @intCast(x), y };
-        }
-        if (mem.indexOf(u8, line, "S")) |x| {
-            startPos = .{ @intCast(x), y };
-        }
+        if (mem.indexOf(u8, line, "S")) |x| start = .{ x, y };
         try maze.append(try alloc.dupe(u8, line));
     }
+
     return .{
-        .maze = maze,
-        .deer = startPos,
-        .end = endPos,
-        .visited = AutoHashMap(Vec2, bool).init(alloc),
+        try maze.toOwnedSlice(),
+        start,
     };
 }
 
-fn partOne(alloc: Allocator, input: []u8) !usize {
-    var ctx = try parseInput(alloc, input);
-    defer {
-        for (ctx.maze.items) |line| alloc.free(line);
-        ctx.visited.deinit();
-        ctx.maze.deinit();
+fn isCorner(maze: [][]u8, pos: uVec2) bool {
+    const x, const y = pos;
+    return (maze[y - 1][x] == '.' and maze[y + 1][x] == '#' or
+        maze[y + 1][x] == '.' and maze[y - 1][x] == '#');
+}
+
+fn printNodes(nodesMap: AutoArrayHashMap(uVec2, Node), maze: [][]u8) void {
+    const keys = nodesMap.keys();
+
+    for (0..keys.len) |i| {
+        maze[keys[i][1]][keys[i][0]] = 'N';
     }
+    for (maze) |line| std.debug.print("{s}\n", .{line});
+}
+
+fn createNodes(alloc: Allocator, maze: [][]u8, start: uVec2) !void {
+    var nodesMap = AutoArrayHashMap(uVec2, Node).init(alloc);
+    defer nodesMap.deinit();
+
+    for (maze, 0..) |line, y| {
+        for (line, 0..) |ch, x| {
+            if (ch == '.' and isCorner(maze, .{ x, y })) {
+                print("Node at: {d},{d}\n", .{ x, y });
+                try nodesMap.put(.{ x, y }, .{});
+                // tryLinkSouth()
+            }
+        }
+    }
+    printNodes(nodesMap, maze);
+    _ = start;
+}
+
+fn partOne(alloc: Allocator, input: []u8) !usize {
+    const maze, const start = try parseInput(alloc, input);
+    defer {
+        for (maze) |line| alloc.free(line);
+        alloc.free(maze);
+    }
+    for (maze) |line| print("{s}\n", .{line});
+    try createNodes(alloc, maze, start);
     return 0;
 }
 
@@ -85,8 +116,8 @@ pub fn main() !void {
     const result_part_one_example = try partOne(gpa, p1_example_input);
     print("Part one example result: {d}\n", .{result_part_one_example});
 
-    const result_part_one = try partOne(gpa, p1_input);
-    print("Part one result: {d}\n", .{result_part_one});
+    // const result_part_one = try partOne(gpa, p1_input);
+    // print("Part one result: {d}\n", .{result_part_one});
     //
     // const result_part_two_example = try partTwo(gpa, p1_example_input);
     // print("Part two example result: {d}\n", .{result_part_two_example});
