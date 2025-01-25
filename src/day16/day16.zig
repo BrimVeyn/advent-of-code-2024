@@ -29,7 +29,7 @@ const Special = enum {
 
 const INF: usize = 9999;
 
-const Direction = enum {
+const Dir = enum(usize) {
     UP,
     RIGHT,
     DOWN,
@@ -37,36 +37,62 @@ const Direction = enum {
 };
 
 const Node = struct {
+    pos: uVec2,
     up: ?*Node = null,
     right: ?*Node = null,
     down: ?*Node = null,
     left: ?*Node = null,
 };
 
-fn parseInput(alloc: Allocator, input: []u8) !struct { [][]u8, uVec2 } {
+fn parseInput(alloc: Allocator, input: []u8) !struct { [][]u8, uVec2, uVec2 } {
     var maze = ArrayList([]u8).init(alloc);
 
     var lines = mem.tokenizeScalar(u8, input, '\n');
     var start: uVec2 = undefined;
+    var end: uVec2 = undefined;
     var y: usize = 0;
     while (lines.next()) |line| : (y += 1) {
         if (mem.indexOf(u8, line, "S")) |x| start = .{ x, y };
+        if (mem.indexOf(u8, line, "E")) |x| end = .{ x, y };
         try maze.append(try alloc.dupe(u8, line));
     }
+    for (maze.items) |line| {
+        print("{s}\n", .{line});
+    }
+    maze.items[end[1]][end[0]] = '.';
+    maze.items[start[1]][start[0]] = '.';
 
     return .{
         try maze.toOwnedSlice(),
         start,
+        end,
     };
 }
 
-fn isCorner(maze: [][]u8, pos: uVec2) bool {
+fn isNode(maze: [][]u8, pos: uVec2) bool {
     const x, const y = pos;
-    return (maze[y - 1][x] == '.' and maze[y + 1][x] == '#' or
-        maze[y + 1][x] == '.' and maze[y - 1][x] == '#');
+    const paths: [4]bool = .{
+        maze[y - 1][x] == '.',
+        maze[y][x + 1] == '.',
+        maze[y + 1][x] == '.',
+        maze[y][x - 1] == '.',
+    };
+    const pathCount =
+        @as(usize, @intFromBool(paths[0])) +
+        @as(usize, @intFromBool(paths[1])) +
+        @as(usize, @intFromBool(paths[2])) +
+        @as(usize, @intFromBool(paths[3]));
+
+    if ((paths[0] and !paths[2]) or (!paths[0] and paths[2]))
+        return true;
+    if ((paths[0] or paths[2]) and (paths[1] or paths[3]))
+        return true;
+    if (pathCount == 1)
+        return true;
+    return false;
 }
 
-fn printNodes(nodesMap: AutoArrayHashMap(uVec2, Node), maze: [][]u8) void {
+fn printMapWithNodes(nodesMap: AutoArrayHashMap(uVec2, Node), maze: [][]u8) void {
     const keys = nodesMap.keys();
 
     for (0..keys.len) |i| {
@@ -75,31 +101,122 @@ fn printNodes(nodesMap: AutoArrayHashMap(uVec2, Node), maze: [][]u8) void {
     for (maze) |line| std.debug.print("{s}\n", .{line});
 }
 
-fn createNodes(alloc: Allocator, maze: [][]u8, start: uVec2) !void {
+const directions: [4]iVec2 = .{
+    .{ 0, -1 }, //North
+    .{ 1, 0 },
+    .{ 0, 1 },
+    .{ -1, 0 },
+};
+
+fn addOffset(vec: uVec2, offset: iVec2) uVec2 {
+    return .{
+        @as(u32, @intCast(@as(i32, @intCast(vec[0])) + offset[0])),
+        @as(u32, @intCast(@as(i32, @intCast(vec[1])) + offset[1])),
+    };
+}
+
+fn linkNode(entry: Entry, rhs: *Node, d: iVec2) void {
+    switch (d[1]) {
+        1 => {
+            entry.value_ptr.down = rhs;
+            return;
+        },
+        -1 => {
+            entry.value_ptr.up = rhs;
+            return;
+        },
+        else => {},
+    }
+    switch (d[0]) {
+        1 => {
+            entry.value_ptr.right = rhs;
+            return;
+        },
+        -1 => {
+            entry.value_ptr.left = rhs;
+            return;
+        },
+        else => {},
+    }
+}
+
+const Entry = AutoArrayHashMap(uVec2, Node).Entry;
+
+fn dfs(nodesMap: AutoArrayHashMap(uVec2, Node), entry: Entry, maze: [][]u8) void {
+    for (directions) |d| {
+        var start = entry.key_ptr.*;
+        while (true) {
+            start = addOffset(start, d);
+            if (maze[start[1]][start[0]] == '#')
+                break;
+            if (nodesMap.getPtr(start)) |rhs| {
+                linkNode(entry, rhs, d);
+                break;
+            }
+        }
+    }
+}
+
+fn linkNodes(nodesMap: AutoArrayHashMap(uVec2, Node), maze: [][]u8) void {
+    var it = nodesMap.iterator();
+
+    while (it.next()) |entry| {
+        dfs(nodesMap, entry, maze);
+    }
+
+    it.reset();
+    while (it.next()) |entry| {
+        var first: bool = true;
+        print("Node: ({d},{d}) connects to: [", .{ entry.key_ptr.*[0], entry.key_ptr.*[1] });
+        if (entry.value_ptr.up) |node| {
+            print("U:({},{})", .{ node.pos[0], node.pos[1] });
+            first = false;
+        }
+        if (entry.value_ptr.right) |node| {
+            if (!first) print(" ", .{});
+            print("R:({},{})", .{ node.pos[0], node.pos[1] });
+            first = false;
+        }
+        if (entry.value_ptr.down) |node| {
+            if (!first) print(" ", .{});
+            print("D:({},{})", .{ node.pos[0], node.pos[1] });
+            first = false;
+        }
+        if (entry.value_ptr.left) |node| {
+            if (!first) print(" ", .{});
+            print("L:({},{})", .{ node.pos[0], node.pos[1] });
+            first = false;
+        }
+        print("]\n", .{});
+    }
+}
+
+fn createNodes(alloc: Allocator, maze: [][]u8, start: uVec2, end: uVec2) !void {
+    _ = end;
     var nodesMap = AutoArrayHashMap(uVec2, Node).init(alloc);
     defer nodesMap.deinit();
 
     for (maze, 0..) |line, y| {
         for (line, 0..) |ch, x| {
-            if (ch == '.' and isCorner(maze, .{ x, y })) {
-                print("Node at: {d},{d}\n", .{ x, y });
-                try nodesMap.put(.{ x, y }, .{});
-                // tryLinkSouth()
+            if (ch == '.' and isNode(maze, .{ x, y })) {
+                // print("Node at: {d},{d}\n", .{ x, y });
+                try nodesMap.put(.{ x, y }, .{ .pos = .{ x, y } });
             }
         }
     }
-    printNodes(nodesMap, maze);
+    printMapWithNodes(nodesMap, maze);
+    linkNodes(nodesMap, maze);
     _ = start;
 }
 
 fn partOne(alloc: Allocator, input: []u8) !usize {
-    const maze, const start = try parseInput(alloc, input);
+    const maze, const start, const end = try parseInput(alloc, input);
     defer {
         for (maze) |line| alloc.free(line);
         alloc.free(maze);
     }
-    for (maze) |line| print("{s}\n", .{line});
-    try createNodes(alloc, maze, start);
+    // for (maze) |line| print("{s}\n", .{line});
+    try createNodes(alloc, maze, start, end);
     return 0;
 }
 
