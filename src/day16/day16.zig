@@ -10,6 +10,8 @@ const Allocator = std.mem.Allocator;
 const uVec2 = @Vector(2, usize);
 const iVec2 = @Vector(2, i32);
 
+const Entry = AutoArrayHashMap(uVec2, Node).Entry;
+
 fn openAndRead(path: []const u8, allocator: Allocator) ![]u8 {
     var file = try std.fs.cwd().openFile(path, .{});
     defer file.close();
@@ -38,10 +40,10 @@ const Dir = enum(usize) {
 
 const Node = struct {
     pos: uVec2,
-    up: ?*Node = null,
-    right: ?*Node = null,
-    down: ?*Node = null,
-    left: ?*Node = null,
+    up: struct { ?*Node, usize } = .{ null, 0 },
+    right: struct { ?*Node, usize } = .{ null, 0 },
+    down: struct { ?*Node, usize } = .{ null, 0 },
+    left: struct { ?*Node, usize } = .{ null, 0 },
 };
 
 fn parseInput(alloc: Allocator, input: []u8) !struct { [][]u8, uVec2, uVec2 } {
@@ -115,42 +117,68 @@ fn addOffset(vec: uVec2, offset: iVec2) uVec2 {
     };
 }
 
-fn linkNode(entry: Entry, rhs: *Node, d: iVec2) void {
-    switch (d[1]) {
+fn linkNode(entry: Entry, rhs: *Node, dir: iVec2, dist: usize) void {
+    switch (dir[1]) {
         1 => {
-            entry.value_ptr.down = rhs;
+            entry.value_ptr.down[0] = rhs;
+            entry.value_ptr.down[1] = dist;
             return;
         },
         -1 => {
-            entry.value_ptr.up = rhs;
+            entry.value_ptr.up[0] = rhs;
+            entry.value_ptr.up[1] = dist;
             return;
         },
         else => {},
     }
-    switch (d[0]) {
+    switch (dir[0]) {
         1 => {
-            entry.value_ptr.right = rhs;
+            entry.value_ptr.right[0] = rhs;
+            entry.value_ptr.right[1] = dist;
             return;
         },
         -1 => {
-            entry.value_ptr.left = rhs;
+            entry.value_ptr.left[0] = rhs;
+            entry.value_ptr.left[1] = dist;
             return;
         },
         else => {},
     }
 }
 
-const Entry = AutoArrayHashMap(uVec2, Node).Entry;
+fn printNode(mb_node: struct { ?*Node, usize }, ch: u8, space: bool) bool {
+    if (mb_node[0] != null) {
+        if (!space) print(" ", .{});
+        print("{c}:({},{})|D{d}|", .{ ch, mb_node[0].?.pos[0], mb_node[0].?.pos[1], mb_node[1] });
+        return false;
+    }
+    return space;
+}
+
+fn printNodes(nodesMap: AutoArrayHashMap(uVec2, Node)) void {
+    var it = nodesMap.iterator();
+    while (it.next()) |entry| {
+        print("Node: ({d},{d})\t connects to: [", .{ entry.key_ptr.*[0], entry.key_ptr.*[1] });
+        var first: bool = true;
+        first = printNode(entry.value_ptr.up, 'U', first);
+        first = printNode(entry.value_ptr.right, 'R', first);
+        first = printNode(entry.value_ptr.down, 'D', first);
+        first = printNode(entry.value_ptr.left, 'L', first);
+        print("]\n", .{});
+    }
+}
 
 fn dfs(nodesMap: AutoArrayHashMap(uVec2, Node), entry: Entry, maze: [][]u8) void {
-    for (directions) |d| {
+    for (directions) |dir| {
         var start = entry.key_ptr.*;
+        var dist: usize = 0;
         while (true) {
-            start = addOffset(start, d);
+            start = addOffset(start, dir);
+            dist += 1;
             if (maze[start[1]][start[0]] == '#')
                 break;
             if (nodesMap.getPtr(start)) |rhs| {
-                linkNode(entry, rhs, d);
+                linkNode(entry, rhs, dir, dist);
                 break;
             }
         }
@@ -163,50 +191,23 @@ fn linkNodes(nodesMap: AutoArrayHashMap(uVec2, Node), maze: [][]u8) void {
     while (it.next()) |entry| {
         dfs(nodesMap, entry, maze);
     }
-
     it.reset();
-    while (it.next()) |entry| {
-        var first: bool = true;
-        print("Node: ({d},{d}) connects to: [", .{ entry.key_ptr.*[0], entry.key_ptr.*[1] });
-        if (entry.value_ptr.up) |node| {
-            print("U:({},{})", .{ node.pos[0], node.pos[1] });
-            first = false;
-        }
-        if (entry.value_ptr.right) |node| {
-            if (!first) print(" ", .{});
-            print("R:({},{})", .{ node.pos[0], node.pos[1] });
-            first = false;
-        }
-        if (entry.value_ptr.down) |node| {
-            if (!first) print(" ", .{});
-            print("D:({},{})", .{ node.pos[0], node.pos[1] });
-            first = false;
-        }
-        if (entry.value_ptr.left) |node| {
-            if (!first) print(" ", .{});
-            print("L:({},{})", .{ node.pos[0], node.pos[1] });
-            first = false;
-        }
-        print("]\n", .{});
-    }
 }
 
-fn createNodes(alloc: Allocator, maze: [][]u8, start: uVec2, end: uVec2) !void {
-    _ = end;
+fn createNodes(alloc: Allocator, maze: [][]u8) !AutoArrayHashMap(uVec2, Node) {
     var nodesMap = AutoArrayHashMap(uVec2, Node).init(alloc);
-    defer nodesMap.deinit();
 
     for (maze, 0..) |line, y| {
         for (line, 0..) |ch, x| {
             if (ch == '.' and isNode(maze, .{ x, y })) {
-                // print("Node at: {d},{d}\n", .{ x, y });
                 try nodesMap.put(.{ x, y }, .{ .pos = .{ x, y } });
             }
         }
     }
+
     printMapWithNodes(nodesMap, maze);
     linkNodes(nodesMap, maze);
-    _ = start;
+    return nodesMap;
 }
 
 fn partOne(alloc: Allocator, input: []u8) !usize {
@@ -216,7 +217,12 @@ fn partOne(alloc: Allocator, input: []u8) !usize {
         alloc.free(maze);
     }
     // for (maze) |line| print("{s}\n", .{line});
-    try createNodes(alloc, maze, start, end);
+    var nodesMap: AutoArrayHashMap(uVec2, Node) = try createNodes(alloc, maze);
+    defer nodesMap.deinit();
+
+    printNodes(nodesMap);
+    _ = start;
+    _ = end;
     return 0;
 }
 
