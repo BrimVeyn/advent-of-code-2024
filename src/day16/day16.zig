@@ -248,14 +248,14 @@ fn dirToStr(dir: usize) []const u8 {
 
 fn minIndex(arr: [4]usize) usize {
     var lowestNum: usize = arr[0];
-    var lowestIdx: usize = 0;
+    var lowestIndex: usize = 0;
     for (arr, 0..) |item, i| {
         if (item < lowestNum) {
             lowestNum = item;
-            lowestIdx = i;
+            lowestIndex = i;
         }
     }
-    return lowestIdx;
+    return lowestIndex;
 }
 
 fn debugPath(maze: [][]u8, from: uVec2, to: uVec2) void {
@@ -271,7 +271,7 @@ fn debugPath(maze: [][]u8, from: uVec2, to: uVec2) void {
     return;
 }
 
-fn djikstra(alloc: Allocator, adjMatrix: [][]Cost, start: usize, end: usize, nodesMap: AutoArrayHashMap(uVec2, Node), maze: [][]u8) !struct { distance: usize, path: ArrayList([4]?usize) } {
+fn djikstra(alloc: Allocator, adjMatrix: [][]Cost, start: usize, end: usize, nodesMap: AutoArrayHashMap(uVec2, Node), maze: [][]u8) !struct { distance: usize, path: ArrayList([4]?usize), distances: ArrayList([4]usize) } {
     const nodesCount = adjMatrix.len;
 
     var distances = try ArrayList([4]usize).initCapacity(alloc, nodesCount);
@@ -279,7 +279,6 @@ fn djikstra(alloc: Allocator, adjMatrix: [][]Cost, start: usize, end: usize, nod
     var predecessors = try ArrayList([4]?usize).initCapacity(alloc, nodesCount);
     var queue = std.PriorityQueue(State, void, lessThan).init(alloc, {});
     defer {
-        distances.deinit();
         visited.deinit();
         queue.deinit();
     }
@@ -303,6 +302,7 @@ fn djikstra(alloc: Allocator, adjMatrix: [][]Cost, start: usize, end: usize, nod
         print("Node[{d}]: {any}, {s}, {d}\n", .{ current.idx, pos, dirToStr(current.dir), current.cost });
 
         if (current.idx == end) {
+            print("HEY ! reached: {d}\n", .{end});
             break;
         }
 
@@ -327,7 +327,10 @@ fn djikstra(alloc: Allocator, adjMatrix: [][]Cost, start: usize, end: usize, nod
         // print("{any}\n", .{queue.items});
         // break;
     }
-    return .{ .distance = current.cost, .path = predecessors };
+    for (distances.items, 0..) |dist, i| {
+        print("dist[{d}]: {any}\n", .{ i, dist });
+    }
+    return .{ .distance = current.cost, .path = predecessors, .distances = distances };
 }
 
 fn drawColorized(maze: [][]u8) void {
@@ -369,13 +372,24 @@ fn countPaths(maze: [][]u8) usize {
     return count;
 }
 
+fn countNonNull(pre: [4]?usize) usize {
+    var count: usize = 0;
+    for (pre) |value| {
+        if (value != null) count += 1;
+    }
+    return count;
+}
+
 fn drawPath(
     alloc: Allocator,
     path: ArrayList([4]?usize),
     maze: [][]u8,
     end: usize,
+    start: usize,
     nodesMap: AutoArrayHashMap(uVec2, Node),
+    distances: ArrayList([4]usize),
 ) !void {
+    _ = start;
     var nodeStack = ArrayList(usize).init(alloc);
     var visited = AutoArrayHashMap(usize, bool).init(alloc);
     defer {
@@ -385,18 +399,25 @@ fn drawPath(
 
     try nodeStack.append(end);
 
+    const lowest = minIndex(distances.items[end]);
+    print("lowest{d}, {any}\n", .{ lowest, distances.items[end] });
+    for (0..path.items[end].len) |i| {
+        if (i != lowest) path.items[end][i] = null;
+    }
+
+    // var localScore: usize = 0;
     while (true) {
         const current = nodeStack.popOrNull() orelse break;
         if (visited.get(current) != null) continue;
 
         const sPoint = path.items[current];
         const keyTo = nodesMap.keys()[current];
-        for (sPoint) |dir| {
-            if (dir != null) {
-                const keyFrom = nodesMap.keys()[dir.?];
+
+        for (sPoint) |node| {
+            if (node != null) {
+                const keyFrom = nodesMap.keys()[node.?];
                 fillPath(maze, keyFrom, keyTo);
-                try nodeStack.append(dir.?);
-                // print("from: {any}, to: {any}\n", .{ keyFrom, keyTo });
+                try nodeStack.append(node.?);
             }
         }
         try visited.put(current, true);
@@ -430,9 +451,15 @@ fn partOne(alloc: Allocator, input: []u8) !struct { usize, usize } {
 
     print("start: {}, end: {}\n", .{ start, end });
     const sToE = try djikstra(alloc, adjMatrix, startIdx, endIdx, nodesMap, maze);
-    defer sToE.path.deinit();
+    defer {
+        sToE.path.deinit();
+        sToE.distances.deinit();
+    }
 
-    try drawPath(alloc, sToE.path, maze, endIdx, nodesMap);
+    for (sToE.path.items, 0..) |item, i| {
+        print("predecessors[{d}]: {any}\n", .{ i, item });
+    }
+    try drawPath(alloc, sToE.path, maze, endIdx, startIdx, nodesMap, sToE.distances);
     drawColorized(maze);
     return .{
         sToE.distance,
@@ -452,6 +479,9 @@ pub fn main() !void {
 
     const cost, const paths = try partOne(gpa, p1_example_input);
     print("Part one example result: {d}, {d}\n", .{ cost, paths });
+
+    // const cost_real, const paths_real = try partOne(gpa, p1_input);
+    // print("Part one example result: {d}, {d}\n", .{ cost_real, paths_real });
 
     // const result_part_one = try partOne(gpa, p1_input);
     // print("Part one result: {d}\n", .{result_part_one});
