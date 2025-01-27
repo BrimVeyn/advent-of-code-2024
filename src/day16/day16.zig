@@ -292,7 +292,6 @@ fn djikstra(alloc: Allocator, adjMatrix: [][]Cost, start: usize, end: usize, nod
 
     //0 == north, 1 = east, 2 = south, 3 = east
     var current: State = undefined;
-    _ = nodesMap;
     // var known_min: ?usize = null;
     while (queue.count() > 0) {
         current = queue.remove();
@@ -300,9 +299,8 @@ fn djikstra(alloc: Allocator, adjMatrix: [][]Cost, start: usize, end: usize, nod
         if (visited.items[current.idx][current.dir] == true) continue;
         visited.items[current.idx][current.dir] = true;
 
-        // _ = nodesMap;
-        // const pos = nodesMap.keys()[current.idx];
-        // print("Testing: {any}, {s}, {d}\n", .{ pos, dirToStr(current.dir), current.cost });
+        const pos = nodesMap.keys()[current.idx];
+        print("Node[{d}]: {any}, {s}, {d}\n", .{ current.idx, pos, dirToStr(current.dir), current.cost });
 
         if (current.idx == end) {
             break;
@@ -317,12 +315,12 @@ fn djikstra(alloc: Allocator, adjMatrix: [][]Cost, start: usize, end: usize, nod
             // const to = nodesMap.keys()[neighbor];
             // debugPath(maze, pos, to);
             // print("trydist: {d}, distance_neighbor: {d}, Nei:{d}\n", .{ tryDist, distances.items[current.idx][current.dir], neighbor });
-            if (tryDist < distances.items[neighbor][current.dir]) {
-                const newDir = minIndex(dist);
+            const newDir = minIndex(dist);
+            if (tryDist < distances.items[neighbor][newDir]) {
                 predecessors.items[neighbor][newDir] = current.idx;
                 distances.items[neighbor][newDir] = tryDist;
                 try queue.add(.{ .idx = neighbor, .dir = newDir, .cost = tryDist });
-            } else if (tryDist == distances.items[neighbor][current.dir]) {
+            } else if (tryDist == distances.items[neighbor][newDir]) {
                 print("SOMETHING COOL HAPPEND\n", .{});
             }
         }
