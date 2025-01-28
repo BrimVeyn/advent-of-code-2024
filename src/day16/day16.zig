@@ -298,11 +298,12 @@ fn djikstra(alloc: Allocator, adjMatrix: [][]Cost, start: usize, end: usize, nod
         if (visited.items[current.idx][current.dir] == true) continue;
         visited.items[current.idx][current.dir] = true;
 
-        const pos = nodesMap.keys()[current.idx];
-        print("Node[{d}]: {any}, {s}, {d}\n", .{ current.idx, pos, dirToStr(current.dir), current.cost });
+        // const pos = nodesMap.keys()[current.idx];
+        // print("Node[{d}]: {any}, {s}, {d}\n", .{ current.idx, pos, dirToStr(current.dir), current.cost });
+        _ = nodesMap;
 
         if (current.idx == end) {
-            print("HEY ! reached: {d}\n", .{end});
+            // print("HEY ! reached: {d}\n", .{end});
             break;
         }
 
@@ -320,15 +321,8 @@ fn djikstra(alloc: Allocator, adjMatrix: [][]Cost, start: usize, end: usize, nod
                 predecessors.items[neighbor][newDir] = current.idx;
                 distances.items[neighbor][newDir] = tryDist;
                 try queue.add(.{ .idx = neighbor, .dir = newDir, .cost = tryDist });
-            } else if (tryDist == distances.items[neighbor][newDir]) {
-                print("SOMETHING COOL HAPPEND\n", .{});
             }
         }
-        // print("{any}\n", .{queue.items});
-        // break;
-    }
-    for (distances.items, 0..) |dist, i| {
-        print("dist[{d}]: {any}\n", .{ i, dist });
     }
     return .{ .distance = current.cost, .path = predecessors, .distances = distances };
 }
@@ -380,6 +374,23 @@ fn countNonNull(pre: [4]?usize) usize {
     return count;
 }
 
+fn minDist(arr: [4]usize) usize {
+    var lowestNum: usize = arr[0];
+    for (arr) |item| {
+        if (item < lowestNum) {
+            lowestNum = item;
+        }
+    }
+    return lowestNum;
+}
+
+fn notNull(arr: [4]?usize) bool {
+    for (arr) |item| {
+        if (item != null) return true;
+    }
+    return false;
+}
+
 fn drawPath(
     alloc: Allocator,
     path: ArrayList([4]?usize),
@@ -400,11 +411,16 @@ fn drawPath(
     try nodeStack.append(end);
 
     const lowest = minIndex(distances.items[end]);
-    print("lowest{d}, {any}\n", .{ lowest, distances.items[end] });
+    // print("lowest{d}, {any}\n", .{ lowest, distances.items[end] });
     for (0..path.items[end].len) |i| {
         if (i != lowest) path.items[end][i] = null;
     }
 
+    if (nodesMap.getIndex(.{ 97, 133 })) |n| {
+        print("NODEDEDEDED: {any}\n", .{n});
+        print("DISTS: {any}\n", .{distances.items[n]});
+        print("PATHS: {any}\n", .{path.items[n]});
+    }
     // var localScore: usize = 0;
     while (true) {
         const current = nodeStack.popOrNull() orelse break;
@@ -416,6 +432,24 @@ fn drawPath(
         for (sPoint) |node| {
             if (node != null) {
                 const keyFrom = nodesMap.keys()[node.?];
+                const distMin = minDist(distances.items[node.?]);
+                const distMinMod = @mod(minDist(distances.items[node.?]), 1000);
+                if (node.? == 3304) {
+                    print("Salut !\n", .{});
+                }
+                // print("Min: {d}, DMIN: {d}\n", .{ distances.items[node.?], distMin });
+                // print("Pre: {any}\n", .{path.items[node.?]});
+                for (0..4) |i| {
+                    // print("Abs: {d}\n", .{@abs(distances.items[node.?][i] - distMin)});
+                    if (@mod(distances.items[node.?][i], 1000) != distMinMod) {
+                        path.items[node.?][i] = null;
+                    } else if (@abs(distances.items[node.?][i] - distMin) > 1000) {
+                        path.items[node.?][i] = null;
+                    }
+                }
+                // print("Post: {any}\n", .{path.items[node.?]});
+                // if (notNull(path.items[node.?])) {
+                // }
                 fillPath(maze, keyFrom, keyTo);
                 try nodeStack.append(node.?);
             }
@@ -456,9 +490,9 @@ fn partOne(alloc: Allocator, input: []u8) !struct { usize, usize } {
         sToE.distances.deinit();
     }
 
-    for (sToE.path.items, 0..) |item, i| {
-        print("predecessors[{d}]: {any}\n", .{ i, item });
-    }
+    // for (sToE.path.items, 0..) |item, i| {
+    //     print("predecessors[{d}]: {any}\n", .{ i, item });
+    // }
     try drawPath(alloc, sToE.path, maze, endIdx, startIdx, nodesMap, sToE.distances);
     drawColorized(maze);
     return .{
@@ -480,8 +514,8 @@ pub fn main() !void {
     const cost, const paths = try partOne(gpa, p1_example_input);
     print("Part one example result: {d}, {d}\n", .{ cost, paths });
 
-    // const cost_real, const paths_real = try partOne(gpa, p1_input);
-    // print("Part one example result: {d}, {d}\n", .{ cost_real, paths_real });
+    const cost_real, const paths_real = try partOne(gpa, p1_input);
+    print("Part one example result: {d}, {d}\n", .{ cost_real, paths_real });
 
     // const result_part_one = try partOne(gpa, p1_input);
     // print("Part one result: {d}\n", .{result_part_one});
