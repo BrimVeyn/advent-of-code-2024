@@ -1,5 +1,5 @@
-Register A: 0
-Register B: 2024
-Register C: 43690
+Register A: 117440
+Register B: 0
+Register C: 0
 
-Program: 4,0
+Program: 0,3,5,4,3,0

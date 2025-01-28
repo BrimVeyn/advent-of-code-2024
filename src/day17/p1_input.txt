@@ -1,5 +1,23 @@
-Register A: 30899381
+Register A: 290039999999999
 Register B: 0
 Register C: 0
 
 Program: 2,4,1,1,7,5,4,0,0,3,1,6,5,5,3,0
+
+b = a % 8
+b = b ^ 1
+c = a >> b
+b = b ^ c
+a = a >> 3
+b = b ^ 6
+out(b)
+jnz(a)
+
+while a:
+	b = combo(4) % 8
+	b = b ^ 1
+	c = a >> b
+	b = b ^ c
+	a = a >> combo(3)
+	b = b ^ lit(6)
+	print(b)
