@@ -271,7 +271,7 @@ fn debugPath(maze: [][]u8, from: uVec2, to: uVec2) void {
     return;
 }
 
-fn djikstra(alloc: Allocator, adjMatrix: [][]Cost, start: usize, end: usize, nodesMap: AutoArrayHashMap(uVec2, Node), maze: [][]u8) !struct { distance: usize, path: ArrayList([4]?usize), distances: ArrayList([4]usize) } {
+fn djikstra(alloc: Allocator, adjMatrix: [][]Cost, start: usize, end: usize) !struct { distance: usize, path: ArrayList([4]?usize), distances: ArrayList([4]usize) } {
     const nodesCount = adjMatrix.len;
 
     var distances = try ArrayList([4]usize).initCapacity(alloc, nodesCount);
@@ -291,31 +291,19 @@ fn djikstra(alloc: Allocator, adjMatrix: [][]Cost, start: usize, end: usize, nod
 
     //0 == north, 1 = east, 2 = south, 3 = east
     var current: State = undefined;
-    // var known_min: ?usize = null;
     while (queue.count() > 0) {
         current = queue.remove();
 
         if (visited.items[current.idx][current.dir] == true) continue;
         visited.items[current.idx][current.dir] = true;
 
-        // const pos = nodesMap.keys()[current.idx];
-        // print("Node[{d}]: {any}, {s}, {d}\n", .{ current.idx, pos, dirToStr(current.dir), current.cost });
-        _ = nodesMap;
-
         if (current.idx == end) {
-            // print("HEY ! reached: {d}\n", .{end});
             break;
         }
 
         for (adjMatrix[current.idx], 0..) |dist, neighbor| {
             if (dist[current.dir] == INF or visited.items[neighbor][current.dir]) continue;
-
-            // print("current_dir:{s} : Dist: {any}\n", .{ dirToStr(current.dir), dist });
             const tryDist = distances.items[current.idx][current.dir] + dist[current.dir];
-            _ = maze;
-            // const to = nodesMap.keys()[neighbor];
-            // debugPath(maze, pos, to);
-            // print("trydist: {d}, distance_neighbor: {d}, Nei:{d}\n", .{ tryDist, distances.items[current.idx][current.dir], neighbor });
             const newDir = minIndex(dist);
             if (tryDist < distances.items[neighbor][newDir]) {
                 predecessors.items[neighbor][newDir] = current.idx;
@@ -328,16 +316,17 @@ fn djikstra(alloc: Allocator, adjMatrix: [][]Cost, start: usize, end: usize, nod
 }
 
 fn drawColorized(maze: [][]u8) void {
-    const blue = "\x1b[34m"; // ANSI code for blue
-    const reset = "\x1b[0m"; // ANSI code to reset colors}
+    const blue = "\x1b[34m";
+    const yellow = "\x1b[33m";
+    const reset = "\x1b[0m";
 
     for (maze) |line| {
         for (line) |ch| {
-            if (ch != '+') {
-                print("{c}", .{ch});
-                continue;
-            } else {
-                print("{s}{c}{s}", .{ blue, ch, reset });
+            switch (ch) {
+                '.', '#' => print("{c}", .{ch}),
+                '+' => print("{s}{c}{s}", .{ blue, ch, reset }),
+                'N' => print("{s}{c}{s}", .{ yellow, ch, reset }),
+                else => {},
             }
         }
         print("\n", .{});
@@ -347,7 +336,6 @@ fn drawColorized(maze: [][]u8) void {
 fn fillPath(maze: [][]u8, from: uVec2, to: uVec2) void {
     const dy: i32 = @as(i32, @intCast(to[1])) - @as(i32, @intCast(from[1]));
     const dx: i32 = @as(i32, @intCast(to[0])) - @as(i32, @intCast(from[0]));
-    // print("from {} to {}, dy {}\n", .{ from, to, dy });
 
     const drawS = if (dy > 0 or dx > 0) to else from;
     for (0..@abs(dy + dx) + 1) |iy| {
@@ -396,11 +384,9 @@ fn drawPath(
     path: ArrayList([4]?usize),
     maze: [][]u8,
     end: usize,
-    start: usize,
     nodesMap: AutoArrayHashMap(uVec2, Node),
     distances: ArrayList([4]usize),
 ) !void {
-    _ = start;
     var nodeStack = ArrayList(usize).init(alloc);
     var visited = AutoArrayHashMap(usize, bool).init(alloc);
     defer {
@@ -411,17 +397,10 @@ fn drawPath(
     try nodeStack.append(end);
 
     const lowest = minIndex(distances.items[end]);
-    // print("lowest{d}, {any}\n", .{ lowest, distances.items[end] });
     for (0..path.items[end].len) |i| {
         if (i != lowest) path.items[end][i] = null;
     }
 
-    if (nodesMap.getIndex(.{ 97, 133 })) |n| {
-        print("NODEDEDEDED: {any}\n", .{n});
-        print("DISTS: {any}\n", .{distances.items[n]});
-        print("PATHS: {any}\n", .{path.items[n]});
-    }
-    // var localScore: usize = 0;
     while (true) {
         const current = nodeStack.popOrNull() orelse break;
         if (visited.get(current) != null) continue;
@@ -429,27 +408,18 @@ fn drawPath(
         const sPoint = path.items[current];
         const keyTo = nodesMap.keys()[current];
 
-        for (sPoint) |node| {
+        for (sPoint, 0..) |node, it| {
             if (node != null) {
                 const keyFrom = nodesMap.keys()[node.?];
                 const distMin = minDist(distances.items[node.?]);
                 const distMinMod = @mod(minDist(distances.items[node.?]), 1000);
-                if (node.? == 3304) {
-                    print("Salut !\n", .{});
-                }
-                // print("Min: {d}, DMIN: {d}\n", .{ distances.items[node.?], distMin });
-                // print("Pre: {any}\n", .{path.items[node.?]});
                 for (0..4) |i| {
-                    // print("Abs: {d}\n", .{@abs(distances.items[node.?][i] - distMin)});
                     if (@mod(distances.items[node.?][i], 1000) != distMinMod) {
                         path.items[node.?][i] = null;
-                    } else if (@abs(distances.items[node.?][i] - distMin) > 1000) {
+                    } else if (i != it and distances.items[node.?][i] > distMin) {
                         path.items[node.?][i] = null;
                     }
                 }
-                // print("Post: {any}\n", .{path.items[node.?]});
-                // if (notNull(path.items[node.?])) {
-                // }
                 fillPath(maze, keyFrom, keyTo);
                 try nodeStack.append(node.?);
             }
@@ -468,35 +438,26 @@ fn partOne(alloc: Allocator, input: []u8) !struct { usize, usize } {
     var nodesMap: AutoArrayHashMap(uVec2, Node) = try createNodes(alloc, maze);
     defer nodesMap.deinit();
 
-    // printNodes(nodesMap);
-
     const adjMatrix = try buildAdjMatrix(alloc, nodesMap);
     defer {
         for (adjMatrix) |line| alloc.free(line);
         alloc.free(adjMatrix);
     }
 
-    // for (adjMatrix) |line| {
-    //     print("{any}\n", .{line});
-    // }
-
     const startIdx = nodesMap.getIndex(start).?;
     const endIdx = nodesMap.getIndex(end).?;
 
-    print("start: {}, end: {}\n", .{ start, end });
-    const sToE = try djikstra(alloc, adjMatrix, startIdx, endIdx, nodesMap, maze);
+    // print("start: {}, end: {}\n", .{ start, end });
+    const result = try djikstra(alloc, adjMatrix, startIdx, endIdx);
     defer {
-        sToE.path.deinit();
-        sToE.distances.deinit();
+        result.path.deinit();
+        result.distances.deinit();
     }
 
-    // for (sToE.path.items, 0..) |item, i| {
-    //     print("predecessors[{d}]: {any}\n", .{ i, item });
-    // }
-    try drawPath(alloc, sToE.path, maze, endIdx, startIdx, nodesMap, sToE.distances);
+    try drawPath(alloc, result.path, maze, endIdx, nodesMap, result.distances);
     drawColorized(maze);
     return .{
-        sToE.distance,
+        result.distance,
         countPaths(maze),
     };
 }
@@ -511,8 +472,14 @@ pub fn main() !void {
     const p1_input = try openAndRead("./src/day16/p1_input.txt", page_allocator);
     defer page_allocator.free(p1_input); // Free the allocated memory after use
 
+    const p1_example_2 = try openAndRead("./src/day16/p1_example_2.txt", page_allocator);
+    defer page_allocator.free(p1_example_2); // Free the allocated memory after use
+
     const cost, const paths = try partOne(gpa, p1_example_input);
     print("Part one example result: {d}, {d}\n", .{ cost, paths });
+
+    const cost_ex2, const paths_ex2 = try partOne(gpa, p1_example_2);
+    print("Part one example result: {d}, {d}\n", .{ cost_ex2, paths_ex2 });
 
     const cost_real, const paths_real = try partOne(gpa, p1_input);
     print("Part one example result: {d}, {d}\n", .{ cost_real, paths_real });
