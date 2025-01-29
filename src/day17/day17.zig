@@ -96,30 +96,41 @@ fn partOne(alloc: Allocator, input: []u8) !usize {
         ctx.out.deinit();
     }
 
-    var A, const B, const C = [_]usize{ ctx.reg_A, ctx.reg_B, ctx.reg_C };
-    while (true) {
-        defer {
-            A += 1;
-            ctx.out.deinit();
-            ctx.out = ArrayList(u3).init(alloc);
-            ctx.pointer = 0;
-            ctx.reg_A = A;
-            ctx.reg_B = B;
-            ctx.reg_C = C;
-        }
-        print("{d}\n", .{ctx.reg_A});
-        try executeProgram(&ctx);
-        print("{any} : {d}\n", .{ ctx.out.items, ctx.out.items.len });
-        if (std.mem.eql(u3, ctx.out.items, ctx.prog.items)) {
-            for (ctx.out.items) |item| {
-                print("{d},", .{item});
-            }
-            break;
-        }
-    }
+    var stdin = std.io.getStdIn().reader();
 
-    // print("ctx:\nA:{d}\nB:{d}\nC:{d}\nIns:{any}\nOut:{any}\n", .{ ctx.reg_A, ctx.reg_B, ctx.reg_C, ctx.prog.items, ctx.out.items });
-    print("\n", .{});
+    const number = try stdin.readUntilDelimiterOrEofAlloc(alloc, '\n', 10000);
+    defer {
+        if (number != null) alloc.free(number.?);
+    }
+    const parsed = try std.fmt.parseInt(usize, number.?, 2);
+    print("Number in base 10: {d}\n", .{parsed});
+
+    ctx.reg_A = parsed;
+    try executeProgram(&ctx);
+
+    // var A, const B, const C = [_]usize{ ctx.reg_A, ctx.reg_B, ctx.reg_C };
+    // while (A <= 100000) {
+    //     defer {
+    //         A += 1;
+    //         ctx.out.deinit();
+    //         ctx.out = ArrayList(u3).init(alloc);
+    //         ctx.pointer = 0;
+    //         ctx.reg_A = A;
+    //         ctx.reg_B = B;
+    //         ctx.reg_C = C;
+    //     }
+    //     print("{b}\n", .{ctx.reg_A});
+    //     try executeProgram(&ctx);
+    //     print("{any} : {d}\n", .{ ctx.out.items, ctx.out.items.len });
+    //     if (std.mem.eql(u3, ctx.out.items, ctx.prog.items)) {
+    //         for (ctx.out.items) |item| {
+    //             print("{d},", .{item});
+    //         }
+    //         break;
+    //     }
+    // }
+
+    print("ctx:\nA:{d}\nB:{d}\nC:{d}\nIns:{any}\nOut:{any}\n", .{ ctx.reg_A, ctx.reg_B, ctx.reg_C, ctx.prog.items, ctx.out.items });
 
     // print("ctx:\nA:{d}\nB:{d}\nC:{d}\nIns:{any}\n", .{ ctx.reg_A, ctx.reg_B, ctx.reg_C, ctx.prog.items });
     return 0;
