@@ -50,6 +50,63 @@ const Context = struct {
     }
 };
 
+fn match(patterns: PatternMap, towel: []u8, it: usize) !bool {
+    if (it >= towel.len) {
+        return true;
+    }
+
+    var i = it + 1;
+    while (i <= towel.len) : (i += 1) {
+        const towelSlice = towel[it..i];
+        if (patterns.get(towelSlice) != null) {
+            const res = try match(patterns, towel, i);
+            if (res) return true;
+        }
+    }
+    return false;
+}
+
+const State = struct {
+    idx: usize,
+    score: usize,
+};
+
+const StateMap = std.StringHashMap(ArrayList(State));
+const Entry = StateMap.Entry;
+
+const INF = 99999999999;
+
+fn visited(entry: ?ArrayList(State), it: usize) usize {
+    if (entry) |array| {
+        for (array.items) |item| {
+            if (item.idx == it) return item.score;
+        }
+    }
+    return INF;
+}
+
+fn matchTwo(alloc: Allocator, patterns: PatternMap, towel: []u8, dp: *StateMap, it: usize) !usize {
+    if (it >= towel.len) {
+        return 1;
+    }
+
+    var total: usize = 0;
+    var i = it + 1;
+    while (i <= towel.len) : (i += 1) {
+        const towelSlice = towel[it..i];
+        const subTotal = visited(dp.get(towelSlice), it);
+        if (subTotal != INF) {
+            total += subTotal;
+        } else if (patterns.get(towelSlice) != null) {
+            const res = try matchTwo(alloc, patterns, towel, dp, i);
+            var entry = try dp.getOrPutValue(towelSlice, ArrayList(State).init(alloc));
+            try entry.value_ptr.append(.{ .idx = it, .score = res });
+            total += res;
+        }
+    }
+    return total;
+}
+
 fn partOne(alloc: Allocator, input: []u8) !usize {
     var ctx = try Context.init(alloc, input);
     defer {
@@ -62,10 +119,42 @@ fn partOne(alloc: Allocator, input: []u8) !usize {
         ctx.towels.deinit();
     }
 
-    print("towels: {s}\n", .{ctx.towels.items});
-    return 0;
+    var possible: usize = 0;
+    for (ctx.towels.items) |towel| {
+        const result = try match(ctx.patterns, towel, 0);
+        possible += @as(u1, @bitCast(result));
+    }
+
+    return possible;
 }
 
+fn partTwo(alloc: Allocator, input: []u8) !usize {
+    var ctx = try Context.init(alloc, input);
+    defer {
+        var it = ctx.patterns.iterator();
+        while (it.next()) |entry| {
+            alloc.free(entry.key_ptr.*);
+        }
+        ctx.patterns.deinit();
+        for (ctx.towels.items) |towel| alloc.free(towel);
+        ctx.towels.deinit();
+    }
+
+    var totalArrangments: usize = 0;
+    for (ctx.towels.items) |towel| {
+        var dp = StateMap.init(alloc);
+        defer {
+            var it = dp.iterator();
+            while (it.next()) |entry| entry.value_ptr.deinit();
+            dp.deinit();
+        }
+
+        const result = try matchTwo(alloc, ctx.patterns, towel, &dp, 0);
+        totalArrangments += result;
+    }
+
+    return totalArrangments;
+}
 pub fn main() !void {
     var general_purpose_allocator: std.heap.GeneralPurposeAllocator(.{}) = .init;
     const gpa = general_purpose_allocator.allocator();
@@ -79,8 +168,14 @@ pub fn main() !void {
     const res_ex = try partOne(gpa, p1_example_input);
     print("Part one example result: {d}\n", .{res_ex});
 
-    // const res_real = try partOne(gpa, p1_input);
-    // print("Part one example result: {d}\n", .{res_real});
+    const res_real = try partOne(gpa, p1_input);
+    print("Part one example result: {d}\n", .{res_real});
+
+    const res_ex2 = try partTwo(gpa, p1_example_input);
+    print("Part two example result: {d}\n", .{res_ex2});
+
+    const res_real2 = try partTwo(gpa, p1_input);
+    print("Part two example result: {d}\n", .{res_real2});
 
     const leaks = general_purpose_allocator.deinit();
     _ = leaks;

@@ -196,17 +196,7 @@ fn partTwo(allocator: Allocator, input: []const u8) !i32 {
     defer incorects.deinit();
 
     for (incorects.items) |list| {
-        // print("before: ", .{});
-        // for (list.items) |nb| {
-        //     print("{d} ", .{nb});
-        // }
-        // print("\n", .{});
         try fixList(list, map);
-        // print("after: ", .{});
-        // for (list.items) |nb| {
-        //     print("{d} ", .{nb});
-        // }
-        // print("\n", .{});
         const middle = list.items.len / 2;
         total += list.items[middle];
     }
