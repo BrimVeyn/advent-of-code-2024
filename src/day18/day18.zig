@@ -116,6 +116,30 @@ const Context = struct {
         const y = self.memory.items[self.memPointer][1];
         self.maze[y][x] = '#';
     }
+
+    pub fn curuptNext(self: *Context) void {
+        self.memPointer += 1;
+        const ptr = self.memPointer;
+
+        const key = self.memory.items[ptr];
+        const i = self.nodes.getIndex(key).?;
+        if (self.nodes.getIndex(.{ key[0] + 1, key[1] })) |index| {
+            self.adjMatrix[index][i] = INF;
+        }
+        if (key[0] != 0) {
+            if (self.nodes.getIndex(.{ key[0] - 1, key[1] })) |index| {
+                self.adjMatrix[index][i] = INF;
+            }
+        }
+        if (self.nodes.getIndex(.{ key[0], key[1] + 1 })) |index| {
+            self.adjMatrix[index][i] = INF;
+        }
+        if (key[1] != 0) {
+            if (self.nodes.getIndex(.{ key[0], key[1] - 1 })) |index| {
+                self.adjMatrix[index][i] = INF;
+            }
+        }
+    }
 };
 
 fn lessThan(context: void, a: State, b: State) std.math.Order {
@@ -183,6 +207,23 @@ fn partOne(alloc: Allocator, input: []u8, mapSize: usize, readSize: usize) !usiz
         ctx.nodes.deinit();
     }
 
+    const idxStart = ctx.nodes.getIndex(.{ 0, 0 }).?;
+    const idxEnd = ctx.nodes.getIndex(.{ mapSize - 1, mapSize - 1 }).?;
+    const minDist = try djikstra(alloc, &ctx, idxStart, idxEnd);
+    return minDist;
+}
+
+fn partTwo(alloc: Allocator, input: []u8, mapSize: usize, readSize: usize) !usize {
+    var ctx = try Context.init(alloc, input, mapSize, readSize);
+    defer {
+        ctx.memory.deinit();
+        for (ctx.maze) |line| alloc.free(line);
+        alloc.free(ctx.maze);
+        for (ctx.adjMatrix) |line| alloc.free(line);
+        alloc.free(ctx.adjMatrix);
+        ctx.nodes.deinit();
+    }
+
     // print("{any}\n", .{ctx.memory.items});
     // for (ctx.maze) |line| print("{s}\n", .{line});
     // const keys = ctx.nodes.keys();
@@ -192,9 +233,17 @@ fn partOne(alloc: Allocator, input: []u8, mapSize: usize, readSize: usize) !usiz
 
     const idxStart = ctx.nodes.getIndex(.{ 0, 0 }).?;
     const idxEnd = ctx.nodes.getIndex(.{ mapSize - 1, mapSize - 1 }).?;
-    const minDist = try djikstra(alloc, &ctx, idxStart, idxEnd);
-
-    return minDist;
+    while (true) {
+        const minDist = try djikstra(alloc, &ctx, idxStart, idxEnd);
+        if (minDist == 0) {
+            print("Failed at {d}, coords: {any}\n", .{ ctx.memPointer, ctx.memory.items[ctx.memPointer] });
+            return minDist;
+        } else {
+            print("Pointer: {d}, Found: {d}\n", .{ ctx.memPointer, minDist });
+        }
+        ctx.curuptNext();
+    }
+    return 0;
 }
 
 pub fn main() !void {
@@ -207,20 +256,14 @@ pub fn main() !void {
     const p1_input = try openAndRead("./src/day18/p1_input.txt", page_allocator);
     defer page_allocator.free(p1_input); // Free the allocated memory after use
 
-    const res_ex = try partOne(gpa, p1_example_input, 7, 22);
+    const res_ex = try partOne(gpa, p1_example_input, 7, 12);
     print("Part one example result: {d}\n", .{res_ex});
 
     const res_real = try partOne(gpa, p1_input, 71, 1024);
     print("Part one example result: {d}\n", .{res_real});
 
-    // const result_part_one = try partOne(gpa, p1_input);
-    // print("Part one result: {d}\n", .{result_part_one});
-    //
-    // const result_part_two_example = try partTwo(gpa, p1_example_input);
-    // print("Part two example result: {d}\n", .{result_part_two_example});
-    //
-    // const result_part_two = try partTwo(gpa, p1_input);
-    // print("Part two result: {d}\n", .{result_part_two});
+    _ = try partTwo(gpa, p1_example_input, 7, 12);
+    _ = try partTwo(gpa, p1_input, 71, 1024);
 
     const leaks = general_purpose_allocator.deinit();
     _ = leaks;
