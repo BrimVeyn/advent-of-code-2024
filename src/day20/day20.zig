@@ -25,6 +25,10 @@ const Cheat = struct {
     saved: usize,
 };
 
+fn inBounds(dim: usize, start: uVec2) bool {
+    return (start[0] > 0 and start[0] < dim and start[1] > 0 and start[1] < dim);
+}
+
 const Context = struct {
     raceTrack: [][]u8,
     tracks: [][]usize,
@@ -63,50 +67,51 @@ const Context = struct {
     }
 
     pub fn fillTracks(self: *Context, alloc: Allocator) !void {
-        var visited = AutoHashMap(uVec2, bool).init(alloc);
+        var visited = AutoArrayHashMap(uVec2, bool).init(alloc);
         defer visited.deinit();
 
-        var dist: usize = 1;
+        var dist: usize = 0;
         var car = self.end;
+
+        const dirs: [4]iVec2 = .{ .{ 1, 0 }, .{ -1, 0 }, .{ 0, 1 }, .{ 0, -1 } };
         while (true) {
-            defer dist += 1;
             if (self.raceTrack[car[1]][car[0]] == 'S')
                 break;
-            if (car[0] > 0) {
-                const up: uVec2 = .{ car[0 - 1], car[1] };
-                if (self.raceTrack[up[1]][up[0]] == '.' and visited.get(up) == null) {
-                    self.tracks[up[1]][up[0]] = dist;
+
+            for (dirs) |dir| {
+                const newX: usize = @as(usize, @intCast(@as(i32, @intCast(car[0])) + dir[0]));
+                const newY: usize = @as(usize, @intCast(@as(i32, @intCast(car[1])) + dir[1]));
+                if (visited.get(.{ newX, newY }) == null and
+                    (self.raceTrack[newY][newX] == '.' or self.raceTrack[newY][newX] == 'S'))
+                {
+                    self.tracks[car[1]][car[0]] = dist;
+                    car = .{ newX, newY };
+                    break;
                 }
             }
-            if (car[0] < self.raceTrack.len) {
-                const down: uVec2 = .{ car[0 + 1], car[1] };
-                if (self.raceTrack[down[1]][down[0]] == '.' and visited.get(down) == null) {
-                    self.tracks[down[1]][down[0]] = dist;
-                }
-            }
-            if (car[1] > 0) {
-                const up: uVec2 = .{ car[0 - 1], car[1] };
-                if (self.raceTrack[up[1]][up[0]] == '.' and visited.get(up) == null) {
-                    self.tracks[up[1]][up[0]] = dist;
-                }
-            }
-            if (car[0] < self.raceTrack.len) {
-                const down: uVec2 = .{ car[0 + 1], car[1] };
-                if (self.raceTrack[down[1]][down[0]] == '.' and visited.get(down) == null) {
-                    self.tracks[down[1]][down[0]] = dist;
-                }
-            }
+
+            dist += 1;
+            try visited.put(car, true);
         }
     }
 };
 
 fn partOne(alloc: Allocator, input: []u8) !usize {
-    const ctx = try Context.parseInput(alloc, input);
+    var ctx = try Context.init(alloc, input);
+    try ctx.fillTracks(alloc);
     defer {
         for (ctx.raceTrack) |line| alloc.free(line);
         alloc.free(ctx.raceTrack);
         for (ctx.tracks) |line| alloc.free(line);
         alloc.free(ctx.tracks);
+    }
+
+    for (ctx.raceTrack) |line| {
+        print("{s}\n", .{line});
+    }
+
+    for (ctx.tracks) |line| {
+        print("{d}\n", .{line});
     }
 
     return 0;
@@ -116,10 +121,10 @@ pub fn main() !void {
     var general_purpose_allocator: std.heap.GeneralPurposeAllocator(.{}) = .init;
     const gpa = general_purpose_allocator.allocator();
 
-    const p1_example_input = try openAndRead("./src/day19/p1_example.txt", page_allocator);
+    const p1_example_input = try openAndRead("./src/day20/p1_example.txt", page_allocator);
     defer page_allocator.free(p1_example_input); // Free the allocated memory after use
 
-    const p1_input = try openAndRead("./src/day19/p1_input.txt", page_allocator);
+    const p1_input = try openAndRead("./src/day20/p1_input.txt", page_allocator);
     defer page_allocator.free(p1_input); // Free the allocated memory after use
 
     const res_ex = try partOne(gpa, p1_example_input);
