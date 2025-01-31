@@ -20,19 +20,14 @@ fn openAndRead(path: []const u8, allocator: Allocator) ![]u8 {
 
 const WALL: usize = 99999999999999999;
 
-const Cheat = struct {
-    pos: uVec2,
-    saved: usize,
-};
-
-fn inBounds(dim: usize, start: uVec2) bool {
-    return (start[0] > 0 and start[0] < dim and start[1] > 0 and start[1] < dim);
+fn inBounds(dim: usize, start: iVec2) bool {
+    return (start[0] >= 0 and start[0] < dim and start[1] >= 0 and start[1] < dim);
 }
 
 const Context = struct {
     raceTrack: [][]u8,
     tracks: [][]usize,
-    cheats: ArrayList(Cheat),
+    dists: AutoArrayHashMap(uVec2, usize),
     end: uVec2,
 
     pub fn init(alloc: Allocator, input: []u8) !Context {
@@ -61,37 +56,38 @@ const Context = struct {
         return .{
             .raceTrack = raceTrack,
             .tracks = try tracks.toOwnedSlice(),
-            .cheats = ArrayList(Cheat).init(alloc),
+            .dists = AutoArrayHashMap(uVec2, usize).init(alloc),
             .end = end,
         };
     }
 
     pub fn fillTracks(self: *Context, alloc: Allocator) !void {
-        var visited = AutoArrayHashMap(uVec2, bool).init(alloc);
-        defer visited.deinit();
+        self.dists = AutoArrayHashMap(uVec2, usize).init(alloc);
 
         var dist: usize = 0;
         var car = self.end;
 
         const dirs: [4]iVec2 = .{ .{ 1, 0 }, .{ -1, 0 }, .{ 0, 1 }, .{ 0, -1 } };
         while (true) {
-            if (self.raceTrack[car[1]][car[0]] == 'S')
+            if (self.raceTrack[car[1]][car[0]] == 'S') {
+                self.tracks[car[1]][car[0]] = dist;
+                try self.dists.put(car, dist);
                 break;
+            }
 
             for (dirs) |dir| {
                 const newX: usize = @as(usize, @intCast(@as(i32, @intCast(car[0])) + dir[0]));
                 const newY: usize = @as(usize, @intCast(@as(i32, @intCast(car[1])) + dir[1]));
-                if (visited.get(.{ newX, newY }) == null and
+                if (self.dists.get(.{ newX, newY }) == null and
                     (self.raceTrack[newY][newX] == '.' or self.raceTrack[newY][newX] == 'S'))
                 {
                     self.tracks[car[1]][car[0]] = dist;
+                    try self.dists.put(car, dist);
                     car = .{ newX, newY };
                     break;
                 }
             }
-
             dist += 1;
-            try visited.put(car, true);
         }
     }
 };
@@ -104,17 +100,66 @@ fn partOne(alloc: Allocator, input: []u8) !usize {
         alloc.free(ctx.raceTrack);
         for (ctx.tracks) |line| alloc.free(line);
         alloc.free(ctx.tracks);
+        ctx.dists.deinit();
     }
 
-    for (ctx.raceTrack) |line| {
-        print("{s}\n", .{line});
+    var cheats = AutoArrayHashMap(usize, usize).init(alloc);
+    defer cheats.deinit();
+
+    var it = ctx.dists.iterator();
+
+    const dirs: [4]iVec2 = .{ .{ 2, 0 }, .{ -2, 0 }, .{ 0, 2 }, .{ 0, -2 } };
+    while (it.next()) |path| {
+        const pos = path.key_ptr.*;
+        for (dirs) |dir| {
+            var newPos: iVec2 = .{ @intCast(pos[0]), @intCast(pos[1]) };
+            newPos[0] += dir[0];
+            newPos[1] += dir[1];
+            if (inBounds(ctx.raceTrack.len, newPos)) {
+                const salope: uVec2 = .{ @intCast(newPos[0]), @intCast(newPos[1]) };
+                if (ctx.dists.get(salope)) |entry| {
+                    if (entry < path.value_ptr.*) {
+                        print("{d}: {d}\n", .{ path.value_ptr.*, entry });
+                        if (path.value_ptr.* - entry == 74) {
+                            print("AT: {d}, dir: {d}, newPos: {d}\n", .{ path.key_ptr.*, dir, newPos });
+                        }
+                        const gain = path.value_ptr.* - entry - 2;
+                        if (gain != 0) {
+                            const cheat = try cheats.getOrPutValue(path.value_ptr.* - entry - 2, 0);
+                            cheat.value_ptr.* += 1;
+                        }
+                        // print("Cheat: {d}\n", .{path.value_ptr.* - entry - 2});
+                    }
+                }
+            }
+        }
     }
 
+    var total: usize = 0;
+    var cheatIt = cheats.iterator();
+    while (cheatIt.next()) |cheat| {
+        if (cheat.key_ptr.* >= 100) {
+            total += cheat.value_ptr.*;
+        }
+        print("There are {d} that saves {d} picoseconds\n", .{ cheat.value_ptr.*, cheat.key_ptr.* });
+    }
+
+    // for (ctx.raceTrack) |line| {
+    //     print("{s}\n", .{line});
+    // }
+    //
     for (ctx.tracks) |line| {
-        print("{d}\n", .{line});
+        for (line) |num| {
+            if (num == WALL) {
+                print("XX", .{});
+            } else {
+                print("{d}", .{num});
+            }
+        }
+        print("\n", .{});
     }
 
-    return 0;
+    return total;
 }
 
 pub fn main() !void {
@@ -130,8 +175,8 @@ pub fn main() !void {
     const res_ex = try partOne(gpa, p1_example_input);
     print("Part one example result: {d}\n", .{res_ex});
 
-    // const res_real = try partOne(gpa, p1_input);
-    // print("Part one example result: {d}\n", .{res_real});
+    const res_real = try partOne(gpa, p1_input);
+    print("Part one example result: {d}\n", .{res_real});
     //
     // const res_ex2 = try partTwo(gpa, p1_example_input);
     // print("Part two example result: {d}\n", .{res_ex2});
