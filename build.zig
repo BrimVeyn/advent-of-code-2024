@@ -24,6 +24,7 @@ const Days = [_][]const u8{
     "day18",
     "day19",
     "day20",
+    "day21",
 };
 
 pub fn build(b: *std.Build) !void {
