@@ -112,23 +112,15 @@ fn partOne(alloc: Allocator, input: []u8) !usize {
     while (it.next()) |path| {
         const pos = path.key_ptr.*;
         for (dirs) |dir| {
-            var newPos: iVec2 = .{ @intCast(pos[0]), @intCast(pos[1]) };
-            newPos[0] += dir[0];
-            newPos[1] += dir[1];
+            const newPos: iVec2 = .{ @as(i32, @intCast(pos[0])) + dir[0], @as(i32, @intCast(pos[1])) + dir[1] };
             if (inBounds(ctx.raceTrack.len, newPos)) {
-                const salope: uVec2 = .{ @intCast(newPos[0]), @intCast(newPos[1]) };
-                if (ctx.dists.get(salope)) |entry| {
+                if (ctx.dists.get(.{ @intCast(newPos[0]), @intCast(newPos[1]) })) |entry| {
                     if (entry < path.value_ptr.*) {
-                        print("{d}: {d}\n", .{ path.value_ptr.*, entry });
-                        if (path.value_ptr.* - entry == 74) {
-                            print("AT: {d}, dir: {d}, newPos: {d}\n", .{ path.key_ptr.*, dir, newPos });
-                        }
                         const gain = path.value_ptr.* - entry - 2;
                         if (gain != 0) {
                             const cheat = try cheats.getOrPutValue(path.value_ptr.* - entry - 2, 0);
                             cheat.value_ptr.* += 1;
                         }
-                        // print("Cheat: {d}\n", .{path.value_ptr.* - entry - 2});
                     }
                 }
             }
@@ -138,27 +130,61 @@ fn partOne(alloc: Allocator, input: []u8) !usize {
     var total: usize = 0;
     var cheatIt = cheats.iterator();
     while (cheatIt.next()) |cheat| {
-        if (cheat.key_ptr.* >= 100) {
+        if (cheat.key_ptr.* >= 100)
             total += cheat.value_ptr.*;
-        }
-        print("There are {d} that saves {d} picoseconds\n", .{ cheat.value_ptr.*, cheat.key_ptr.* });
+    }
+    return total;
+}
+
+fn euclidianDist(lhs: uVec2, rhs: uVec2) usize {
+    const dx: usize = @abs(@as(i32, @intCast(lhs[0])) - @as(i32, @intCast(rhs[0])));
+    const dy: usize = @abs(@as(i32, @intCast(lhs[1])) - @as(i32, @intCast(rhs[1])));
+    return dx + dy;
+}
+
+fn partTwo(alloc: Allocator, input: []u8) !usize {
+    var ctx = try Context.init(alloc, input);
+    try ctx.fillTracks(alloc);
+    defer {
+        for (ctx.raceTrack) |line| alloc.free(line);
+        alloc.free(ctx.raceTrack);
+        for (ctx.tracks) |line| alloc.free(line);
+        alloc.free(ctx.tracks);
+        ctx.dists.deinit();
     }
 
-    // for (ctx.raceTrack) |line| {
-    //     print("{s}\n", .{line});
-    // }
-    //
-    for (ctx.tracks) |line| {
-        for (line) |num| {
-            if (num == WALL) {
-                print("XX", .{});
-            } else {
-                print("{d}", .{num});
+    var cheats = AutoArrayHashMap(usize, usize).init(alloc);
+    defer cheats.deinit();
+
+    var it = ctx.dists.iterator();
+    while (it.next()) |path| {
+        var neighbors = AutoArrayHashMap(uVec2, usize).init(alloc);
+        defer neighbors.deinit();
+
+        var innerIt = ctx.dists.iterator();
+        while (innerIt.next()) |other| {
+            if (other.value_ptr.* >= path.value_ptr.*)
+                continue;
+            const dist = euclidianDist(path.key_ptr.*, other.key_ptr.*);
+            if (dist <= 20) {
+                try neighbors.put(other.key_ptr.*, dist);
+                const gain = path.value_ptr.* - other.value_ptr.* - dist;
+                const cheat = try cheats.getOrPutValue(gain, 0);
+                cheat.value_ptr.* += 1;
             }
         }
-        print("\n", .{});
+        // print("Neighbors of {any}\n", .{neighbors.keys()});
     }
 
+    var total: usize = 0;
+    var cheatIt = cheats.iterator();
+    while (cheatIt.next()) |cheat| {
+        if (cheat.key_ptr.* >= 100)
+            total += cheat.value_ptr.*;
+        if (cheat.key_ptr.* >= 50) {
+            // print("There are {d} cheats that save {d} picoseconds\n", .{ cheat.value_ptr.*, cheat.key_ptr.* });
+        }
+    }
     return total;
 }
 
@@ -177,12 +203,12 @@ pub fn main() !void {
 
     const res_real = try partOne(gpa, p1_input);
     print("Part one example result: {d}\n", .{res_real});
-    //
-    // const res_ex2 = try partTwo(gpa, p1_example_input);
-    // print("Part two example result: {d}\n", .{res_ex2});
-    //
-    // const res_real2 = try partTwo(gpa, p1_input);
-    // print("Part two example result: {d}\n", .{res_real2});
+
+    const res_ex2 = try partTwo(gpa, p1_example_input);
+    print("Part two example result: {d}\n", .{res_ex2});
+
+    const res_real2 = try partTwo(gpa, p1_input);
+    print("Part two example result: {d}\n", .{res_real2});
 
     const leaks = general_purpose_allocator.deinit();
     _ = leaks;
