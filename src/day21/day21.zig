@@ -10,6 +10,8 @@ const Allocator = std.mem.Allocator;
 const uVec2 = @Vector(2, usize);
 const iVec2 = @Vector(2, i32);
 
+const rl = @import("raylib");
+
 fn openAndRead(path: []const u8, allocator: Allocator) ![]u8 {
     var file = try std.fs.cwd().openFile(path, .{});
     defer file.close();
@@ -50,7 +52,7 @@ const Context = struct {
     ) !void {
         _ = fmt;
         _ = options;
-        try std.json.stringify(self, .{ .whitespace = .indent_4 }, writer);
+        try std.json.stringify(self, .{ .whitespace = .indent_2 }, writer);
     }
 };
 
@@ -73,7 +75,49 @@ fn partOne(alloc: Allocator, input: []u8) !usize {
     }
 
     print("{}\n", .{ctx});
+    try rl_display(alloc, input);
     return 0;
+}
+
+const ScreenW: usize = 1000;
+const ScreenH: usize = 1000;
+const centerX: usize = ScreenW / 2;
+const centerY: usize = ScreenH / 2;
+
+fn rl_display(alloc: Allocator, input: []u8) !void {
+    _ = alloc;
+    _ = input;
+    const screenWidth = ScreenW;
+    const screenHeight = ScreenH;
+
+    rl.initWindow(screenWidth, screenHeight, "raylib-zig [core] example - basic window");
+    defer rl.closeWindow(); // Close window and OpenGL context
+
+    rl.setTargetFPS(60); // Set our game to run at 60 frames-per-second
+
+    // Main game loop
+    while (!rl.windowShouldClose()) { // Detect window close button or ESC key
+        // Update
+        //----------------------------------------------------------------------------------
+        // if (rl.isKeyPressed(.l)) {
+        //     for (robots.items) |*robot| {
+        //         robot.pos[0] = @mod((robot.pos[0] + robot.velocity[0]), @intFromEnum(Dim.X));
+        //         robot.pos[1] = @mod((robot.pos[1] + robot.velocity[1]), @intFromEnum(Dim.Y));
+        //     }
+        // }
+        // try partTwo(&robots, &start);
+
+        //----------------------------------------------------------------------------------
+
+        // Draw
+        //----------------------------------------------------------------------------------
+        rl.beginDrawing();
+        defer rl.endDrawing();
+
+        rl.clearBackground(rl.Color.yellow);
+
+        //----------------------------------------------------------------------------------
+    }
 }
 
 pub fn main() !void {
