@@ -22,6 +22,7 @@ fn openAndRead(path: []const u8, allocator: Allocator) ![]u8 {
 
 const Context = struct {
     sequences: [5][]const u8 = undefined,
+    alloc: Allocator,
 
     pub fn init(alloc: Allocator, input: []u8) !Context {
         var it = std.mem.tokenizeScalar(u8, input, '\n');
@@ -33,6 +34,7 @@ const Context = struct {
 
         return .{
             .sequences = sequences,
+            .alloc = alloc,
         };
     }
 
@@ -54,28 +56,97 @@ const Context = struct {
         _ = options;
         try std.json.stringify(self, .{ .whitespace = .indent_2 }, writer);
     }
+
+    pub fn deinit(self: *Context) void {
+        for (self.sequences) |code| self.alloc.free(code);
+    }
 };
 
-const NumKeyPad = .{
-    "789",
-    "456",
-    "123",
-    "X0A",
+const NumKeyPad = [_][]const u8{
+    ".....",
+    ".789.",
+    ".456.",
+    ".123.",
+    "..0A.",
+    ".....",
 };
 
-const DirKeyPad = .{
-    "X^A",
-    "<v>",
+const DirKeyPad = [_][]const u8{
+    ".....",
+    "..^A.",
+    ".<v>.",
+    ".....",
 };
+
+const Dirs = [_]iVec2{ .{ 1, 0 }, .{ -1, 0 }, .{ 0, 1 }, .{ 0, -1 } };
+
+const State = struct {
+    pos: iVec2,
+    it: usize,
+    path: ArrayList(iVec2),
+};
+
+fn bfsShortest(alloc: Allocator, sequence: []const u8, start: iVec2) !ArrayList([]iVec2) {
+    var queue = ArrayList(State).init(alloc);
+    defer queue.deinit();
+
+    var paths = ArrayList([]iVec2).init(alloc);
+
+    var visited = AutoHashMap(iVec2, usize).init(alloc);
+    defer visited.deinit();
+
+    try queue.append(State{ .path = ArrayList(iVec2).init(alloc), .it = 0, .pos = start });
+
+    while (queue.items.len > 0) {
+        const state = queue.orderedRemove(0);
+        var it = state.it;
+        const pos = state.pos;
+        var path = state.path;
+
+        if (NumKeyPad[@intCast(pos[1])][@intCast(pos[0])] == sequence[it]) {
+            it += 1;
+        }
+
+        print("POS: {d}, goal: {c}\n", .{ pos, sequence[it] });
+
+        if (it >= sequence.len) {
+            const short_path = try path.toOwnedSlice();
+            try paths.append(short_path);
+        }
+
+        for (Dirs) |dir| {
+            const next: iVec2 = .{ pos[0] + dir[0], pos[1] + dir[1] };
+
+            if (NumKeyPad[@intCast(next[1])][@intCast(next[0])] == '.')
+                continue;
+            if (visited.get(next)) |prev_it| {
+                if (prev_it >= it)
+                    continue;
+            }
+
+            try queue.append(State{ .pos = next, .it = it, .path = try path.clone() });
+            try visited.put(next, it);
+        }
+    }
+
+    return paths;
+}
 
 fn partOne(alloc: Allocator, input: []u8) !usize {
-    const ctx = try Context.init(alloc, input);
-    defer {
-        for (ctx.sequences) |code| alloc.free(code);
+    var ctx = try Context.init(alloc, input);
+    defer ctx.deinit();
+
+    for (ctx.sequences) |sequence| {
+        const A: iVec2 = .{ 3, 4 };
+        const paths = try bfsShortest(alloc, sequence, A);
+        for (paths.items) |path| {
+            print("{any}\n", .{path});
+        }
+        break;
     }
 
     print("{}\n", .{ctx});
-    try rl_display(alloc, input);
+    // try rl_display(alloc, input);
     return 0;
 }
 
@@ -90,7 +161,7 @@ fn rl_display(alloc: Allocator, input: []u8) !void {
     const screenWidth = ScreenW;
     const screenHeight = ScreenH;
 
-    rl.initWindow(screenWidth, screenHeight, "raylib-zig [core] example - basic window");
+    rl.initWindow(screenWidth, screenHeight, "Day21");
     defer rl.closeWindow(); // Close window and OpenGL context
 
     rl.setTargetFPS(60); // Set our game to run at 60 frames-per-second
