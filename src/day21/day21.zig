@@ -78,81 +78,117 @@ const DirKeyPad = [_][]const u8{
     ".....",
 };
 
-const Dirs = [_]iVec2{ .{ 1, 0 }, .{ -1, 0 }, .{ 0, 1 }, .{ 0, -1 } };
+const Dirs = [_]struct { iVec2, u8 }{ .{ .{ 1, 0 }, '>' }, .{ .{ -1, 0 }, '<' }, .{ .{ 0, 1 }, 'v' }, .{ .{ 0, -1 }, '^' } };
 
 const State = struct {
     pos: iVec2,
-    it: usize,
-    path: ArrayList(iVec2),
+    path: ArrayList(u8),
+    visited: AutoHashMap(iVec2, bool),
 };
 
-fn bfsShortest(alloc: Allocator, sequence: []const u8, start: iVec2) !ArrayList([]iVec2) {
+fn bfsShortest(alloc: Allocator, target: u8, start: iVec2) !ArrayList([]u8) {
     var queue = ArrayList(State).init(alloc);
     defer queue.deinit();
 
-    var paths = ArrayList([]iVec2).init(alloc);
+    var paths = ArrayList([]u8).init(alloc);
 
-    var visited = AutoHashMap(iVec2, ArrayList(usize)).init(alloc);
-    defer {
-        var vIt = visited.iterator();
-        while (vIt.next()) |entry| {
-            entry.value_ptr.deinit();
-        }
-        visited.deinit();
-    }
+    var baseVisited = AutoHashMap(iVec2, bool).init(alloc);
+    try baseVisited.put(start, true);
 
-    var basePath = ArrayList(iVec2).init(alloc);
-    try basePath.append(start);
-    try queue.append(State{ .path = basePath, .it = 0, .pos = start });
+    const basePath = ArrayList(u8).init(alloc);
+    try queue.append(State{ .path = basePath, .pos = start, .visited = baseVisited });
+
+    var shortest: ?usize = null;
 
     while (queue.items.len > 0) {
         const state = queue.orderedRemove(0);
-        var it = state.it;
         const pos = state.pos;
         var path = state.path;
+        var visited = state.visited;
 
-        //Found a target, go next
-        if (NumKeyPad[@intCast(pos[1])][@intCast(pos[0])] == sequence[it]) {
-            it += 1;
-        }
+        //Found target
+        if (NumKeyPad[@intCast(pos[1])][@intCast(pos[0])] == target) {
+            visited.deinit();
 
-        //Found all targets
-        if (it >= sequence.len) {
-            print("Reached the end !\n", .{});
-            const short_path = try path.toOwnedSlice();
-            try paths.append(short_path);
+            if (shortest == null) {
+                shortest = path.items.len;
+            } else if (path.items.len > shortest.?) {
+                path.deinit();
+                continue;
+            }
+            try path.append('A'); //We need to press that key
+            try paths.append(try path.toOwnedSlice());
             continue;
         }
 
-        outer: for (Dirs) |dir| {
-            const next: iVec2 = .{ pos[0] + dir[0], pos[1] + dir[1] };
+        for (Dirs) |dir| {
+            const next: iVec2 = .{ pos[0] + dir[0][0], pos[1] + dir[0][1] };
 
-            //Out of bounds
-            if (NumKeyPad[@intCast(next[1])][@intCast(next[0])] == '.')
-                continue;
+            //Out of bounds or visited
+            if (NumKeyPad[@intCast(next[1])][@intCast(next[0])] == '.' or visited.get(next) != null) continue;
+            try visited.put(next, true);
 
-            //Already visited with this target
-            if (visited.get(next)) |list| {
-                for (list.items) |prev_it| {
-                    if (prev_it == it)
-                        continue :outer;
-                }
-            }
-
-            //Add visited
-            const entry = try visited.getOrPutValue(next, ArrayList(usize).init(alloc));
-            try entry.value_ptr.append(it);
-
-            //Push new state
+            const vClone = try visited.clone();
             var clone = try path.clone();
-            try clone.append(next);
-            try queue.append(State{ .pos = next, .it = it, .path = clone });
+            try clone.append(dir[1]); //Append '<>^v'
+            try queue.append(State{ .pos = next, .path = clone, .visited = vClone });
         }
-        //Free current state path
         path.deinit();
+        visited.deinit();
     }
 
     return paths;
+}
+
+fn getPos(c: u8) iVec2 {
+    for (NumKeyPad, 0..) |line, y| {
+        for (line, 0..) |ch, x| {
+            if (ch == c) return .{ @intCast(x), @intCast(y) };
+        }
+    }
+    unreachable;
+}
+
+fn solveSequence(alloc: Allocator, sequence: []const u8) !void {
+    var ways = ArrayList([]u8).init(alloc);
+    defer {
+        for (ways.items) |way| alloc.free(way);
+        ways.deinit();
+    }
+
+    for (0..sequence.len) |i| {
+        const s = if (i == 0) 'A' else sequence[i - 1];
+        const e = if (i == 0) sequence[0] else sequence[i];
+        const sPos = getPos(s);
+
+        const paths = try bfsShortest(alloc, e, sPos);
+        defer {
+            for (paths.items) |path| alloc.free(path);
+            paths.deinit();
+        }
+        var combos = ArrayList([]u8).init(alloc);
+
+        if (i == 0) {
+            for (paths.items) |path| {
+                try ways.append(try alloc.dupe(u8, path));
+            }
+        } else {
+            for (paths.items) |path| {
+                for (ways.items) |way| {
+                    const combined = try alloc.alloc(u8, path.len + way.len);
+                    @memcpy(combined[0..way.len], way);
+                    @memcpy(combined[way.len..], path);
+                    try combos.append(combined);
+                }
+            }
+            for (ways.items) |way| alloc.free(way);
+            ways.deinit();
+            ways = combos;
+        }
+    }
+    for (ways.items) |way| {
+        print("WAY: {s}\n", .{way});
+    }
 }
 
 fn partOne(alloc: Allocator, input: []u8) !usize {
@@ -160,25 +196,10 @@ fn partOne(alloc: Allocator, input: []u8) !usize {
     defer ctx.deinit();
 
     for (ctx.sequences) |sequence| {
-        _ = sequence;
-        // const A: iVec2 = .{ 3, 4 };
-        const Tmp: iVec2 = .{ 2, 3 };
-        const paths = try bfsShortest(alloc, "9", Tmp);
-        defer {
-            for (paths.items) |path| alloc.free(path);
-            paths.deinit();
-        }
-        for (paths.items) |path| {
-            print("{any}\n", .{path});
-            for (path) |pos| {
-                print("{c},", .{NumKeyPad[@intCast(pos[1])][@intCast(pos[0])]});
-            }
-            print("\n", .{});
-        }
+        try solveSequence(alloc, sequence);
         break;
     }
 
-    print("{}\n", .{ctx});
     // try rl_display(alloc, input);
     return 0;
 }
