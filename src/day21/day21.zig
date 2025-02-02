@@ -92,10 +92,18 @@ fn bfsShortest(alloc: Allocator, sequence: []const u8, start: iVec2) !ArrayList(
 
     var paths = ArrayList([]iVec2).init(alloc);
 
-    var visited = AutoHashMap(iVec2, usize).init(alloc);
-    defer visited.deinit();
+    var visited = AutoHashMap(iVec2, ArrayList(usize)).init(alloc);
+    defer {
+        var vIt = visited.iterator();
+        while (vIt.next()) |entry| {
+            entry.value_ptr.deinit();
+        }
+        visited.deinit();
+    }
 
-    try queue.append(State{ .path = ArrayList(iVec2).init(alloc), .it = 0, .pos = start });
+    var basePath = ArrayList(iVec2).init(alloc);
+    try basePath.append(start);
+    try queue.append(State{ .path = basePath, .it = 0, .pos = start });
 
     while (queue.items.len > 0) {
         const state = queue.orderedRemove(0);
@@ -103,30 +111,45 @@ fn bfsShortest(alloc: Allocator, sequence: []const u8, start: iVec2) !ArrayList(
         const pos = state.pos;
         var path = state.path;
 
+        //Found a target, go next
         if (NumKeyPad[@intCast(pos[1])][@intCast(pos[0])] == sequence[it]) {
             it += 1;
         }
 
-        print("POS: {d}, goal: {c}\n", .{ pos, sequence[it] });
-
+        //Found all targets
         if (it >= sequence.len) {
+            print("Reached the end !\n", .{});
             const short_path = try path.toOwnedSlice();
             try paths.append(short_path);
+            continue;
         }
 
-        for (Dirs) |dir| {
+        outer: for (Dirs) |dir| {
             const next: iVec2 = .{ pos[0] + dir[0], pos[1] + dir[1] };
 
+            //Out of bounds
             if (NumKeyPad[@intCast(next[1])][@intCast(next[0])] == '.')
                 continue;
-            if (visited.get(next)) |prev_it| {
-                if (prev_it >= it)
-                    continue;
+
+            //Already visited with this target
+            if (visited.get(next)) |list| {
+                for (list.items) |prev_it| {
+                    if (prev_it == it)
+                        continue :outer;
+                }
             }
 
-            try queue.append(State{ .pos = next, .it = it, .path = try path.clone() });
-            try visited.put(next, it);
+            //Add visited
+            const entry = try visited.getOrPutValue(next, ArrayList(usize).init(alloc));
+            try entry.value_ptr.append(it);
+
+            //Push new state
+            var clone = try path.clone();
+            try clone.append(next);
+            try queue.append(State{ .pos = next, .it = it, .path = clone });
         }
+        //Free current state path
+        path.deinit();
     }
 
     return paths;
@@ -137,10 +160,20 @@ fn partOne(alloc: Allocator, input: []u8) !usize {
     defer ctx.deinit();
 
     for (ctx.sequences) |sequence| {
-        const A: iVec2 = .{ 3, 4 };
-        const paths = try bfsShortest(alloc, sequence, A);
+        _ = sequence;
+        // const A: iVec2 = .{ 3, 4 };
+        const Tmp: iVec2 = .{ 2, 3 };
+        const paths = try bfsShortest(alloc, "9", Tmp);
+        defer {
+            for (paths.items) |path| alloc.free(path);
+            paths.deinit();
+        }
         for (paths.items) |path| {
             print("{any}\n", .{path});
+            for (path) |pos| {
+                print("{c},", .{NumKeyPad[@intCast(pos[1])][@intCast(pos[0])]});
+            }
+            print("\n", .{});
         }
         break;
     }
