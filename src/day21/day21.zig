@@ -21,13 +21,13 @@ fn openAndRead(path: []const u8, allocator: Allocator) ![]u8 {
 }
 
 const Context = struct {
-    sequences: [5][]const u8 = undefined,
+    sequences: [5][]u8 = undefined,
     alloc: Allocator,
 
     pub fn init(alloc: Allocator, input: []u8) !Context {
         var it = std.mem.tokenizeScalar(u8, input, '\n');
         var i: usize = 0;
-        var sequences: [5][]const u8 = undefined;
+        var sequences: [5][]u8 = undefined;
         while (it.next()) |line| : (i += 1) {
             sequences[i] = try alloc.dupe(u8, line);
         }
@@ -78,6 +78,11 @@ const DirKeyPad = [_][]const u8{
     ".....",
 };
 
+const Pads = enum {
+    Directionnnal,
+    Numerical,
+};
+
 const Dirs = [_]struct { iVec2, u8 }{ .{ .{ 1, 0 }, '>' }, .{ .{ -1, 0 }, '<' }, .{ .{ 0, 1 }, 'v' }, .{ .{ 0, -1 }, '^' } };
 
 const State = struct {
@@ -86,7 +91,7 @@ const State = struct {
     visited: AutoHashMap(iVec2, bool),
 };
 
-fn bfsShortest(alloc: Allocator, target: u8, start: iVec2) !ArrayList([]u8) {
+fn bfsShortest(alloc: Allocator, target: u8, start: iVec2, wPad: Pads) !ArrayList([]u8) {
     var queue = ArrayList(State).init(alloc);
     defer queue.deinit();
 
@@ -107,7 +112,9 @@ fn bfsShortest(alloc: Allocator, target: u8, start: iVec2) !ArrayList([]u8) {
         var visited = state.visited;
 
         //Found target
-        if (NumKeyPad[@intCast(pos[1])][@intCast(pos[0])] == target) {
+        if ((wPad == .Numerical and NumKeyPad[@intCast(pos[1])][@intCast(pos[0])] == target) or
+            (wPad == .Directionnnal and DirKeyPad[@intCast(pos[1])][@intCast(pos[0])] == target))
+        {
             visited.deinit();
 
             if (shortest == null) {
@@ -125,7 +132,12 @@ fn bfsShortest(alloc: Allocator, target: u8, start: iVec2) !ArrayList([]u8) {
             const next: iVec2 = .{ pos[0] + dir[0][0], pos[1] + dir[0][1] };
 
             //Out of bounds or visited
-            if (NumKeyPad[@intCast(next[1])][@intCast(next[0])] == '.' or visited.get(next) != null) continue;
+            if ((wPad == .Numerical and NumKeyPad[@intCast(next[1])][@intCast(next[0])] == '.') or
+                (wPad == .Directionnnal and DirKeyPad[@intCast(next[1])][@intCast(next[0])] == '.') or
+                visited.get(next) != null)
+            {
+                continue;
+            }
             try visited.put(next, true);
 
             const vClone = try visited.clone();
@@ -140,28 +152,32 @@ fn bfsShortest(alloc: Allocator, target: u8, start: iVec2) !ArrayList([]u8) {
     return paths;
 }
 
-fn getPos(c: u8) iVec2 {
-    for (NumKeyPad, 0..) |line, y| {
-        for (line, 0..) |ch, x| {
-            if (ch == c) return .{ @intCast(x), @intCast(y) };
+fn getPos(c: u8, pad: Pads) iVec2 {
+    if (pad == .Numerical) {
+        for (NumKeyPad, 0..) |line, y| {
+            for (line, 0..) |ch, x| {
+                if (ch == c) return .{ @intCast(x), @intCast(y) };
+            }
+        }
+    } else {
+        for (DirKeyPad, 0..) |line, y| {
+            for (line, 0..) |ch, x| {
+                if (ch == c) return .{ @intCast(x), @intCast(y) };
+            }
         }
     }
     unreachable;
 }
 
-fn solveSequence(alloc: Allocator, sequence: []const u8) !void {
+fn solveSequence(alloc: Allocator, sequence: []u8, pad: Pads) !ArrayList([]u8) {
     var ways = ArrayList([]u8).init(alloc);
-    defer {
-        for (ways.items) |way| alloc.free(way);
-        ways.deinit();
-    }
 
     for (0..sequence.len) |i| {
         const s = if (i == 0) 'A' else sequence[i - 1];
         const e = if (i == 0) sequence[0] else sequence[i];
-        const sPos = getPos(s);
+        const sPos = getPos(s, pad);
 
-        const paths = try bfsShortest(alloc, e, sPos);
+        const paths = try bfsShortest(alloc, e, sPos, pad);
         defer {
             for (paths.items) |path| alloc.free(path);
             paths.deinit();
@@ -186,63 +202,52 @@ fn solveSequence(alloc: Allocator, sequence: []const u8) !void {
             ways = combos;
         }
     }
-    for (ways.items) |way| {
-        print("WAY: {s}\n", .{way});
-    }
+    return ways;
 }
 
 fn partOne(alloc: Allocator, input: []u8) !usize {
     var ctx = try Context.init(alloc, input);
     defer ctx.deinit();
 
+    var total: usize = 0;
     for (ctx.sequences) |sequence| {
-        try solveSequence(alloc, sequence);
-        break;
+        print("-------------TRYING: {s}------------\n", .{sequence});
+        var bestWay: usize = 99999999999999;
+        const numWays = try solveSequence(alloc, sequence, .Numerical);
+        defer {
+            for (numWays.items) |way| alloc.free(way);
+            numWays.deinit();
+        }
+        for (numWays.items) |numWay| {
+            print("Num: {s}\n", .{numWay});
+            const firstRobotWay = try solveSequence(alloc, numWay, .Directionnnal);
+            defer {
+                for (firstRobotWay.items) |dir| alloc.free(dir);
+                firstRobotWay.deinit();
+            }
+            for (firstRobotWay.items) |firstWay| {
+                // print("First: {d}\n", .{firstWay.len});
+                const secondRobotWays = try solveSequence(alloc, firstWay, .Directionnnal);
+                defer {
+                    for (secondRobotWays.items) |dir| alloc.free(dir);
+                    secondRobotWays.deinit();
+                }
+                for (secondRobotWays.items) |final| {
+                    // print("Second: {d}\n", .{final.len});
+                    if (final.len < bestWay) {
+                        bestWay = final.len;
+                    }
+                }
+                // break;
+            }
+            print("Local best: {d}\n", .{bestWay});
+        }
+        print("Best: {d}\n", .{bestWay});
+        total += (bestWay * try std.fmt.parseInt(usize, sequence[0..3], 10));
+        // break;
     }
 
-    // try rl_display(alloc, input);
-    return 0;
-}
-
-const ScreenW: usize = 1000;
-const ScreenH: usize = 1000;
-const centerX: usize = ScreenW / 2;
-const centerY: usize = ScreenH / 2;
-
-fn rl_display(alloc: Allocator, input: []u8) !void {
-    _ = alloc;
-    _ = input;
-    const screenWidth = ScreenW;
-    const screenHeight = ScreenH;
-
-    rl.initWindow(screenWidth, screenHeight, "Day21");
-    defer rl.closeWindow(); // Close window and OpenGL context
-
-    rl.setTargetFPS(60); // Set our game to run at 60 frames-per-second
-
-    // Main game loop
-    while (!rl.windowShouldClose()) { // Detect window close button or ESC key
-        // Update
-        //----------------------------------------------------------------------------------
-        // if (rl.isKeyPressed(.l)) {
-        //     for (robots.items) |*robot| {
-        //         robot.pos[0] = @mod((robot.pos[0] + robot.velocity[0]), @intFromEnum(Dim.X));
-        //         robot.pos[1] = @mod((robot.pos[1] + robot.velocity[1]), @intFromEnum(Dim.Y));
-        //     }
-        // }
-        // try partTwo(&robots, &start);
-
-        //----------------------------------------------------------------------------------
-
-        // Draw
-        //----------------------------------------------------------------------------------
-        rl.beginDrawing();
-        defer rl.endDrawing();
-
-        rl.clearBackground(rl.Color.yellow);
-
-        //----------------------------------------------------------------------------------
-    }
+    return total;
 }
 
 pub fn main() !void {
