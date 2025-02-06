@@ -10,8 +10,6 @@ const Allocator = std.mem.Allocator;
 const uVec2 = @Vector(2, usize);
 const iVec2 = @Vector(2, i32);
 
-const rl = @import("raylib");
-
 fn openAndRead(path: []const u8, allocator: Allocator) ![]u8 {
     var file = try std.fs.cwd().openFile(path, .{});
     defer file.close();
@@ -169,7 +167,10 @@ fn getPos(c: u8, pad: Pads) iVec2 {
     unreachable;
 }
 
-fn solveSequence(alloc: Allocator, sequence: []u8, pad: Pads) !ArrayList([]u8) {
+const u8Vec2 = @Vector(2, u8);
+const Cache = AutoHashMap(u8Vec2, ArrayList([]u8));
+
+fn solveSequence(alloc: Allocator, sequence: []u8, cache: *Cache, pad: Pads) !ArrayList([]u8) {
     var ways = ArrayList([]u8).init(alloc);
 
     for (0..sequence.len) |i| {
@@ -177,13 +178,19 @@ fn solveSequence(alloc: Allocator, sequence: []u8, pad: Pads) !ArrayList([]u8) {
         const e = if (i == 0) sequence[0] else sequence[i];
         const sPos = getPos(s, pad);
 
-        const paths = try bfsShortest(alloc, e, sPos, pad);
-        defer {
-            for (paths.items) |path| alloc.free(path);
-            paths.deinit();
-        }
-        var combos = ArrayList([]u8).init(alloc);
+        // print("S: {c}, E: {c}\n", .{ s, e });
 
+        const key: u8Vec2 = .{ s, e };
+        var paths: ArrayList([]u8) = undefined;
+
+        if (cache.get(key)) |value| {
+            paths = value;
+        } else {
+            paths = try bfsShortest(alloc, e, sPos, pad);
+            try cache.put(key, paths);
+        }
+
+        var combos = ArrayList([]u8).init(alloc);
         if (i == 0) {
             for (paths.items) |path| {
                 try ways.append(try alloc.dupe(u8, path));
@@ -205,6 +212,24 @@ fn solveSequence(alloc: Allocator, sequence: []u8, pad: Pads) !ArrayList([]u8) {
     return ways;
 }
 
+fn solveDirectional(alloc: Allocator, prev: ArrayList([]u8), cache: *Cache) !struct { usize, ArrayList([]u8) } {
+    var bestWay: usize = 999999999999999;
+    var curWays = ArrayList([]u8).init(alloc);
+    for (prev.items) |prevWay| {
+        // print("First: {s}, {d}\n", .{ prevWay, prevWay.len });
+        const newWays = try solveSequence(alloc, prevWay, cache, .Directionnnal);
+        defer newWays.deinit();
+        for (newWays.items) |item| {
+            if (item.len < bestWay) bestWay = item.len;
+            try curWays.append(item);
+        }
+    }
+    return .{
+        bestWay,
+        curWays,
+    };
+}
+
 fn partOne(alloc: Allocator, input: []u8) !usize {
     var ctx = try Context.init(alloc, input);
     defer ctx.deinit();
@@ -212,37 +237,36 @@ fn partOne(alloc: Allocator, input: []u8) !usize {
     var total: usize = 0;
     for (ctx.sequences) |sequence| {
         print("-------------TRYING: {s}------------\n", .{sequence});
-        var bestWay: usize = 99999999999999;
-        const numWays = try solveSequence(alloc, sequence, .Numerical);
+
+        var cache = AutoHashMap(u8Vec2, ArrayList([]u8)).init(alloc);
         defer {
-            for (numWays.items) |way| alloc.free(way);
-            numWays.deinit();
+            var it = cache.iterator();
+            while (it.next()) |entry| {
+                for (entry.value_ptr.items) |item| {
+                    alloc.free(item);
+                }
+                entry.value_ptr.deinit();
+            }
         }
-        for (numWays.items) |numWay| {
-            print("Num: {s}\n", .{numWay});
-            const firstRobotWay = try solveSequence(alloc, numWay, .Directionnnal);
+        const numWays = try solveSequence(alloc, sequence, &cache, .Numerical);
+
+        var bestWay: usize = undefined;
+        var prevWays = numWays;
+        var curWays: ArrayList([]u8) = undefined;
+        defer {
+            for (curWays.items) |item| alloc.free(item);
+            curWays.deinit();
+        }
+
+        for (0..2) |i| {
+            bestWay, curWays = try solveDirectional(alloc, prevWays, &cache);
             defer {
-                for (firstRobotWay.items) |dir| alloc.free(dir);
-                firstRobotWay.deinit();
+                for (prevWays.items) |item| alloc.free(item);
+                prevWays.deinit();
+                prevWays = curWays;
             }
-            for (firstRobotWay.items) |firstWay| {
-                // print("First: {d}\n", .{firstWay.len});
-                const secondRobotWays = try solveSequence(alloc, firstWay, .Directionnnal);
-                defer {
-                    for (secondRobotWays.items) |dir| alloc.free(dir);
-                    secondRobotWays.deinit();
-                }
-                for (secondRobotWays.items) |final| {
-                    // print("Second: {d}\n", .{final.len});
-                    if (final.len < bestWay) {
-                        bestWay = final.len;
-                    }
-                }
-                // break;
-            }
-            print("Local best: {d}\n", .{bestWay});
+            print("Best at {d}: {d}\n", .{ i, bestWay });
         }
-        print("Best: {d}\n", .{bestWay});
         total += (bestWay * try std.fmt.parseInt(usize, sequence[0..3], 10));
         // break;
     }
@@ -263,15 +287,10 @@ pub fn main() !void {
     const res_ex = try partOne(gpa, p1_example_input);
     print("Part one example result: {d}\n", .{res_ex});
 
-    // const res_real = try partOne(gpa, p1_input);
-    // print("Part one example result: {d}\n", .{res_real});
-
-    // const res_ex2 = try partTwo(gpa, p1_example_input);
-    // print("Part two example result: {d}\n", .{res_ex2});
-    //
-    // const res_real2 = try partTwo(gpa, p1_input);
-    // print("Part two example result: {d}\n", .{res_real2});
+    const res_real = try partOne(gpa, p1_input);
+    print("Part one example result: {d}\n", .{res_real});
 
     const leaks = general_purpose_allocator.deinit();
     _ = leaks;
+    // print("{any}\n", .{leaks});
 }
