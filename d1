@@ -1,0 +1,109 @@
+ub: { qp, kh, wq, vc }
+Sorted: { kh, qp, ub }
+Sorted: { kh, qp, ub }
+Sorted: { ub, vc, wq }
+Sorted: { ub, vc, wq }
+de: { cg, co, ta, ka }
+Sorted: { co, de, ta }
+Sorted: { co, de, ta }
+Sorted: { co, de, ka }
+co: { ka, ta, de, tc }
+Sorted: { co, ka, ta }
+Sorted: { co, ka, ta }
+Sorted: { co, de, ka }
+cg: { de, tb, yn, aq }
+Sorted: { aq, cg, yn }
+Sorted: { aq, cg, yn }
+ka: { co, tb, ta, de }
+Sorted: { co, ka, ta }
+Sorted: { co, ka, ta }
+Sorted: { co, de, ka }
+wh: { tc, td, yn, qp }
+Sorted: { tc, td, wh }
+Sorted: { tc, td, wh }
+Sorted: { td, wh, yn }
+Sorted: { qp, td, wh }
+qp: { kh, ub, td, wh }
+Sorted: { kh, qp, ub }
+Sorted: { kh, qp, ub }
+Sorted: { qp, td, wh }
+Sorted: { qp, td, wh }
+tc: { kh, wh, td, co }
+Sorted: { tc, td, wh }
+Sorted: { tc, td, wh }
+td: { tc, wh, qp, yn }
+Sorted: { tc, td, wh }
+Sorted: { tc, td, wh }
+Sorted: { qp, td, wh }
+Sorted: { td, wh, yn }
+wq: { tb, ub, aq, vc }
+Sorted: { tb, vc, wq }
+Sorted: { ub, vc, wq }
+Sorted: { aq, vc, wq }
+Sorted: { tb, vc, wq }
+kh: { tc, qp, ub, ta }
+Sorted: { kh, qp, ub }
+Sorted: { kh, qp, ub }
+yn: { aq, cg, wh, td }
+Sorted: { aq, cg, yn }
+Sorted: { aq, cg, yn }
+Sorted: { td, wh, yn }
+Sorted: { td, wh, yn }
+aq: { yn, vc, cg, wq }
+Sorted: { aq, cg, yn }
+Sorted: { aq, vc, wq }
+Sorted: { aq, cg, yn }
+Sorted: { aq, vc, wq }
+ta: { co, ka, de, kh }
+Sorted: { co, ka, ta }
+Sorted: { co, ka, ta }
+Sorted: { co, de, ta }
+tb: { cg, ka, wq, vc }
+Sorted: { tb, vc, wq }
+Sorted: { tb, vc, wq }
+vc: { aq, ub, wq, tb }
+Sorted: { aq, vc, wq }
+Sorted: { ub, vc, wq }
+Sorted: { aq, vc, wq }
+Sorted: { tb, vc, wq }
+PartOne(Example): 32
+error(gpa): memory address 0x7efeeffc8000 leaked: 
+/home/bvan-pae/zig/0.14.0-dev.2851+b074fb7dd/files/lib/std/array_hash_map.zig:2126:43: 0x1097189 in alloc (day23)
+        const bytes = try gpa.alignedAlloc(u8, @alignOf(IndexHeader), nbytes);
+                                          ^
+/home/bvan-pae/zig/0.14.0-dev.2851+b074fb7dd/files/lib/std/array_hash_map.zig:908:53: 0x107a5ae in ensureTotalCapacityContext (day23)
+            const new_header = try IndexHeader.alloc(gpa, new_bit_index);
+                                                    ^
+/home/bvan-pae/zig/0.14.0-dev.2851+b074fb7dd/files/lib/std/array_hash_map.zig:789:44: 0x1062fb1 in getOrPutContextAdapted__anon_6673 (day23)
+            self.ensureTotalCapacityContext(gpa, self.entries.len + 1, ctx) catch |err| {
+                                           ^
+/home/bvan-pae/zig/0.14.0-dev.2851+b074fb7dd/files/lib/std/array_hash_map.zig:777:56: 0x1046067 in getOrPutContext (day23)
+            const gop = try self.getOrPutContextAdapted(gpa, key, ctx, ctx);
+                                                       ^
+/home/bvan-pae/zig/0.14.0-dev.2851+b074fb7dd/files/lib/std/array_hash_map.zig:953:52: 0x103e8fc in putContext (day23)
+            const result = try self.getOrPutContext(gpa, key, ctx);
+                                                   ^
+/home/bvan-pae/zig/0.14.0-dev.2851+b074fb7dd/files/lib/std/array_hash_map.zig:261:45: 0x103e897 in put (day23)
+            return self.unmanaged.putContext(self.allocator, key, value, self.ctx);
+                                            ^
+
+error(gpa): memory address 0x7efeeffcc000 leaked: 
+/home/bvan-pae/zig/0.14.0-dev.2851+b074fb7dd/files/lib/std/multi_array_list.zig:440:51: 0x10965ad in setCapacity (day23)
+            const new_bytes = try gpa.alignedAlloc(
+                                                  ^
+/home/bvan-pae/zig/0.14.0-dev.2851+b074fb7dd/files/lib/std/multi_array_list.zig:426:36: 0x1096e10 in ensureTotalCapacity (day23)
+            return self.setCapacity(gpa, better_capacity);
+                                   ^
+/home/bvan-pae/zig/0.14.0-dev.2851+b074fb7dd/files/lib/std/array_hash_map.zig:901:57: 0x107a4d6 in ensureTotalCapacityContext (day23)
+                    try self.entries.ensureTotalCapacity(gpa, new_capacity);
+                                                        ^
+/home/bvan-pae/zig/0.14.0-dev.2851+b074fb7dd/files/lib/std/array_hash_map.zig:789:44: 0x1062fb1 in getOrPutContextAdapted__anon_6673 (day23)
+            self.ensureTotalCapacityContext(gpa, self.entries.len + 1, ctx) catch |err| {
+                                           ^
+/home/bvan-pae/zig/0.14.0-dev.2851+b074fb7dd/files/lib/std/array_hash_map.zig:777:56: 0x1046067 in getOrPutContext (day23)
+            const gop = try self.getOrPutContextAdapted(gpa, key, ctx, ctx);
+                                                       ^
+/home/bvan-pae/zig/0.14.0-dev.2851+b074fb7dd/files/lib/std/array_hash_map.zig:953:52: 0x103e8fc in putContext (day23)
+            const result = try self.getOrPutContext(gpa, key, ctx);
+                                                   ^
+
