@@ -16,7 +16,7 @@ const Example = @embedFile("example.txt");
 const Real = @embedFile("real.txt");
 
 const Id = []const u8;
-const Links = StringHashMap(ArrayList(Id));
+const Links = StringArrayHashMap(ArrayList(Id));
 
 pub fn parse(alloc: Allocator, input: []const u8) !Links {
     var links = Links.init(alloc);
@@ -54,6 +54,28 @@ fn lessThan(context: void, a: Id, b: Id) bool {
     if (a[0] == b[0] and a[1] < b[1]) return true;
     return false;
 }
+
+const SliceContext = struct {
+    pub fn hash(ctx: SliceContext, key: []Id) u32 {
+        _ = ctx;
+        var h = std.hash.Fnv1a_32.init();
+        for (0..key.len) |i| {
+            h.update(key[i]);
+        }
+        return h.final();
+    }
+
+    pub fn eql(ctx: SliceContext, a: []Id, b: []Id, _: usize) bool {
+        _ = ctx;
+        if (a.len != b.len) @panic("Comparing two slices with different sizes");
+        for (0..a.len) |i| {
+            if (!std.mem.eql(u8, a[i], b[i])) {
+                return false;
+            }
+        }
+        return true;
+    }
+};
 
 const TrioContext = struct {
     pub fn hash(ctx: TrioContext, key: [3]Id) u32 {
@@ -118,6 +140,52 @@ pub fn partOne(alloc: Allocator, input: []const u8) !usize {
     return trios.count();
 }
 
+pub fn findHigherGroups(alloc: Allocator, ids: []Id, trios: std.ArrayHashMap([]Id, bool, SliceContext, true)) !usize {
+    var trioIt = trios.iterator();
+
+    var currentOrder: usize = 3;
+    while (true) {
+        var nextOrder = std.ArrayHashMap([]Id, bool, SliceContext, true).init(alloc);
+        defer nextOrder.deinit();
+
+        defer currentOrder += 1;
+
+        while (trioIt.next()) |entry| {
+            outer: for (ids) |id| {
+                for (0..currentOrder) |i| {
+                    var conTest = try alloc.dupe(Id, entry.key_ptr.*);
+                    defer alloc.free(conTest);
+                    conTest[i] = id;
+                    std.sort.heap(Id, conTest[0..], {}, lessThan);
+                    if (trios.get(conTest) != null) {} else {
+                        continue :outer;
+                    }
+                }
+                var tmp = ArrayList(Id).init(alloc);
+                defer tmp.deinit();
+                for (0..entry.key_ptr.len) |i| {
+                    try tmp.append(entry.key_ptr.*[i]);
+                }
+                try tmp.append(id);
+                // print("tmp: {s}\n", .{tmp.items});
+                std.sort.heap(Id, tmp.items[0..], {}, lessThan);
+
+                const tmpAsSlice = try tmp.toOwnedSlice();
+                const match = try nextOrder.getOrPutValue(tmpAsSlice, true);
+                if (match.found_existing) alloc.free(tmpAsSlice);
+                print("Match: {s}-{s}\n", .{ entry.key_ptr.*, id });
+            }
+        }
+        var debug = nextOrder.iterator();
+        while (debug.next()) |entry| {
+            print("{s}\n", .{entry.key_ptr.*});
+            alloc.free(entry.key_ptr.*);
+        }
+        break;
+    }
+    return 1;
+}
+
 pub fn partTwo(alloc: Allocator, input: []const u8) !usize {
     var links = try parse(alloc, input);
     defer {
@@ -129,7 +197,7 @@ pub fn partTwo(alloc: Allocator, input: []const u8) !usize {
     //Iterate over every links, compute its intersection
     var it = links.iterator();
 
-    var trios = std.ArrayHashMap([3]Id, bool, TrioContext, true).init(alloc);
+    var trios = std.ArrayHashMap([]Id, bool, SliceContext, true).init(alloc);
     defer trios.deinit();
 
     while (it.next()) |entry| {
@@ -141,12 +209,17 @@ pub fn partTwo(alloc: Allocator, input: []const u8) !usize {
             if (inter.items.len != 0) {
                 for (inter.items) |item| {
                     var final_seq = [3]Id{ entry.key_ptr.*, value, item };
-                    // print("UnSorted: {s}\n", .{final_seq});
                     std.sort.heap(Id, final_seq[0..], {}, lessThan);
+
+                    var tmp = ArrayList(Id).init(alloc);
+                    defer tmp.deinit();
+                    try tmp.appendSlice(final_seq[0..]);
+                    const owned_tmp = try tmp.toOwnedSlice();
+                    // print("UnSorted: {s}\n", .{final_seq});
                     // print("Sorted: {s}\n", .{final_seq});
-                    try trios.put(final_seq, true);
-                    // print("inter: {s}(){s}: {s}\n", .{ entry.key_ptr.*, value, inter.items });
+                    try trios.put(owned_tmp, true);
                 }
+                print("inter: {s}(){s}: {s}\n", .{ entry.key_ptr.*, value, inter.items });
             }
             // trios += inter.items.len;
         }
@@ -156,6 +229,9 @@ pub fn partTwo(alloc: Allocator, input: []const u8) !usize {
     while (triosIt.next()) |entry| {
         print("{s}\n", .{entry.key_ptr.*});
     }
+
+    const result = try findHigherGroups(alloc, links.keys(), trios);
+    _ = result;
 
     return trios.count();
 }
@@ -172,10 +248,10 @@ pub fn main() !void {
 
     const twoExample = try partTwo(alloc, Example);
     print("PartTwo(Example): {any}\n", .{twoExample});
-    //
+
     // const twoReal = try partTwo(alloc, Real);
     // print("PartTwo(Real): {any}\n", .{twoReal});
 
-    const leaks = gpa.deinit();
-    _ = leaks;
+    // const leaks = gpa.deinit();
+    // _ = leaks;
 }
