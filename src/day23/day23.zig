@@ -109,6 +109,8 @@ pub fn intersection(alloc: Allocator, lhs: ArrayList(u16), rhs: ArrayList(u16)) 
 pub fn findHigherGroups(alloc: Allocator, maxId: u16, trios: SliceMap) !SliceMap {
     var order: usize = 3;
     var curOrder: SliceMap = trios;
+
+    // var uselessBranch: usize = 0;
     while (true) {
         var nextOrder = SliceMap.init(alloc);
 
@@ -119,19 +121,21 @@ pub fn findHigherGroups(alloc: Allocator, maxId: u16, trios: SliceMap) !SliceMap
             }
             curOrder.deinit();
             curOrder = nextOrder;
+            order += 1;
         }
 
-        defer order += 1;
-
-        const curCount = curOrder.count();
+        // const curCount = curOrder.count();
         var counter: usize = 0;
 
         const placeHolder = try alloc.alloc(u16, order);
         defer alloc.free(placeHolder);
 
+        const setTest = try alloc.alloc(u16, order + 1);
+        defer alloc.free(setTest);
+
         var curIt = curOrder.iterator();
         while (curIt.next()) |entry| : (counter += 1) {
-            if (counter % 1000 == 0) std.debug.print("{d}/{d}\n", .{ counter, curCount });
+            // if (counter % 1000 == 0) std.debug.print("{d}/{d}\n", .{ counter, curCount });
             outer: for (1..maxId) |id| {
                 @memcpy(placeHolder, entry.key_ptr.*);
                 for (0..order) |i| {
@@ -144,23 +148,24 @@ pub fn findHigherGroups(alloc: Allocator, maxId: u16, trios: SliceMap) !SliceMap
                 }
 
                 var tmp = try alloc.alloc(u16, order + 1);
-                for (entry.key_ptr.*, 0..) |value, i| {
-                    tmp[i] = value;
-                }
+                std.mem.copyForwards(u16, tmp, entry.key_ptr.*);
                 tmp[order] = @intCast(id);
                 std.mem.sort(u16, tmp, {}, lessThan);
                 // print("tmp: {d}\n", .{tmp});
-                //
+
                 if (nextOrder.contains(tmp)) {
                     alloc.free(tmp);
                 } else {
                     try nextOrder.put(tmp, true);
                 }
+
                 // print("Match: {s}-{s}\n", .{ entry.key_ptr.*, id });
             }
         }
-        if (nextOrder.count() == 1) //largest clique found
+        if (nextOrder.count() == 1) {
+            // print("Useless: {d}\n", .{uselessBranch});
             return nextOrder;
+        }
     }
 }
 
