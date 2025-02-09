@@ -18,7 +18,7 @@ const Real = @embedFile("real.txt");
 const Id = []const u8;
 const Links = AutoHashMap(u16, ArrayList(u16));
 
-const Keys = StringHashMap(u16);
+const Keys = StringArrayHashMap(u16);
 
 pub fn parse(alloc: Allocator, input: []const u8) !struct { Links, Keys, u16 } {
     var links = Links.init(alloc);
@@ -67,8 +67,8 @@ fn lessThan(context: void, a: u16, b: u16) bool {
     return (a < b);
 }
 
-const SliceMap = std.HashMap([]u16, bool, SliceContext, 60);
-// const SliceMap = std.ArrayHashMap([]usize, bool, SliceContext, true);
+// const SliceMap = std.HashMap([]u16, bool, SliceContext, 80);
+const SliceMap = std.ArrayHashMap([]u16, bool, SliceContext, true);
 
 const SliceContext = struct {
     pub fn hash(ctx: SliceContext, key: []u16) u32 {
@@ -81,17 +81,17 @@ const SliceContext = struct {
         return h.final();
     }
 
-    pub fn eql(ctx: SliceContext, a: []u16, b: []u16) bool {
-        _ = ctx;
-        if (a.len != b.len) @panic("Comparing two slices with different sizes");
-        return std.mem.eql(u16, a, b);
-    }
-
-    // pub fn eql(ctx: SliceContext, a: []usize, b: []usize, _: usize) bool {
+    // pub fn eql(ctx: SliceContext, a: []u16, b: []u16) bool {
     //     _ = ctx;
     //     if (a.len != b.len) @panic("Comparing two slices with different sizes");
-    //     return std.mem.eql(usize, a, b);
+    //     return std.mem.eql(u16, a, b);
     // }
+
+    pub fn eql(ctx: SliceContext, a: []u16, b: []u16, _: usize) bool {
+        _ = ctx;
+        // if (a.len != b.len) @panic("Comparing two slices with different sizes");
+        return std.mem.eql(u16, a, b);
+    }
 };
 
 pub fn intersection(alloc: Allocator, lhs: ArrayList(u16), rhs: ArrayList(u16)) !ArrayList(u16) {
@@ -106,7 +106,7 @@ pub fn intersection(alloc: Allocator, lhs: ArrayList(u16), rhs: ArrayList(u16)) 
     return set;
 }
 
-pub fn findHigherGroups(alloc: Allocator, maxId: u16, trios: SliceMap) !void {
+pub fn findHigherGroups(alloc: Allocator, maxId: u16, trios: SliceMap) !SliceMap {
     var order: usize = 3;
     var curOrder: SliceMap = trios;
     while (true) {
@@ -139,7 +139,7 @@ pub fn findHigherGroups(alloc: Allocator, maxId: u16, trios: SliceMap) !void {
                     entry.key_ptr.*[i] = @intCast(id);
                     std.mem.sort(u16, entry.key_ptr.*[0..], {}, lessThan);
                     // print("Trying: {d}\n", .{entry.key_ptr.*});
-                    if (curOrder.get(entry.key_ptr.*) == null)
+                    if (!curOrder.contains(entry.key_ptr.*))
                         continue :outer;
                 }
 
@@ -156,26 +156,17 @@ pub fn findHigherGroups(alloc: Allocator, maxId: u16, trios: SliceMap) !void {
                 } else {
                     try nextOrder.put(tmp, true);
                 }
-
                 // print("Match: {s}-{s}\n", .{ entry.key_ptr.*, id });
             }
         }
-        if (nextOrder.count() == 1) {
-            var debug = nextOrder.iterator();
-            while (debug.next()) |entry| {
-                print("{d}\n", .{entry.key_ptr.*});
-            }
-        }
-
-        if (nextOrder.count() == 0) {
-            var it = nextOrder.iterator();
-            while (it.next()) |entry| {
-                alloc.free(entry.key_ptr.*);
-            }
-            nextOrder.deinit();
-            break;
-        }
+        if (nextOrder.count() == 1) //largest clique found
+            return nextOrder;
     }
+}
+
+fn lessThanStr(context: void, a: []const u8, b: []const u8) bool {
+    _ = context;
+    return std.mem.order(u8, a, b).compare(std.math.CompareOperator.lt);
 }
 
 pub fn partTwo(alloc: Allocator, input: []const u8) !usize {
@@ -211,7 +202,6 @@ pub fn partTwo(alloc: Allocator, input: []const u8) !usize {
                         try trios.put(owned_seq, true);
                     }
                 }
-                // print("inter: {s}(){s}: {s}\n", .{ entry.key_ptr.*, value, inter.items });
             }
         }
     }
@@ -219,16 +209,34 @@ pub fn partTwo(alloc: Allocator, input: []const u8) !usize {
     var triosIt = trios.iterator();
     while (triosIt.next()) |entry| {
         print("{d}\n", .{entry.key_ptr.*});
-        // alloc.free(entry.key_ptr.*);
     }
-    // trios.deinit();
 
-    // var keyIt = keys.iterator();
-    // while (keyIt.next()) |entry| {
-    //     print("{s}: {d}\n", .{ entry.key_ptr.*, entry.value_ptr.* });
-    // }
+    var result = try findHigherGroups(alloc, maxId, trios);
+    defer {
+        var resIt = result.iterator();
+        while (resIt.next()) |entry| alloc.free(entry.key_ptr.*);
+        result.deinit();
+    }
 
-    try findHigherGroups(alloc, maxId, trios);
+    var resString = ArrayList([]const u8).init(alloc);
+    defer resString.deinit();
+
+    var resIt = result.iterator();
+    while (resIt.next()) |entry| {
+        for (entry.key_ptr.*) |num| {
+            var keysIt = keys.iterator();
+            while (keysIt.next()) |dict| {
+                if (dict.value_ptr.* == num) {
+                    try resString.append(dict.key_ptr.*);
+                    break;
+                }
+            }
+        }
+    }
+
+    std.mem.sort([]const u8, resString.items, {}, lessThanStr);
+    print("Result: {s}\n", .{resString.items});
+
     return 0;
 }
 
